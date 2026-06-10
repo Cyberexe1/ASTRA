@@ -1,0 +1,42 @@
+# Compiled output
+dist/
+
+# Dependencies
+node_modules/
+
+# Playwright browser binaries
+playwright-browsers/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Test output
+coverage/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Generated reports (keep .md spec files but ignore scan outputs)
+report.md
+capture.har
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
