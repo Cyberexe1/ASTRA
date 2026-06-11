@@ -1,42 +1,82 @@
-# Compiled output
+# ── Compiled output ───────────────────────────────────────────────────────────
 dist/
+*.tsbuildinfo
 
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 
-# Playwright browser binaries
+# ── Playwright browser binaries ───────────────────────────────────────────────
 playwright-browsers/
 
-# Environment variables
+# ── Environment variables & secrets ──────────────────────────────────────────
+# NEVER commit these — they contain API keys and credentials
 .env
 .env.local
 .env.*.local
+*.env
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+gemini-key.enc
 
-# Logs
+# ── Scan output files (generated at runtime, can be large/sensitive) ──────────
+report.md
+capture.har
+*.har
+*.har.json
+
+# ── Kiro / AI tool output ─────────────────────────────────────────────────────
+graphify-out/
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+
+# ── Stitch design tool exports (UI mockup exports, not source code) ───────────
+stitch_*/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# OS files
+# ── OS files ──────────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Editor directories
+# ── Editor directories & files ────────────────────────────────────────────────
 .vscode/
 .idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
+*.sw?
+*.swp
 
-# Test output
+# ── Test output ───────────────────────────────────────────────────────────────
 coverage/
+.nyc_output/
 
-# Build artifacts
-*.tsbuildinfo
+# ── Electron build output ─────────────────────────────────────────────────────
+out/
+release/
+build/
+*.dmg
+*.exe
+*.AppImage
+*.snap
+*.deb
+*.rpm
 
-# Generated reports (keep .md spec files but ignore scan outputs)
-report.md
-capture.har
-graphify-out/cache/
-graphify-out/manifest.json
-graphify-out/cost.json
+# ── Temporary files ───────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.cache
