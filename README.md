@@ -4,9 +4,12 @@
 
 In ancient Indian mythology, an Astra was a powerful celestial weapon capable of revealing weaknesses, overcoming formidable defenses, and changing the course of battle. Inspired by that idea, ASTRA brings the same philosophy to cybersecurity—helping security professionals identify vulnerabilities, uncover hidden attack surfaces, and gain the intelligence needed to defend modern applications.
 
-ASTRA is a desktop security analysis tool that automates what you'd normally do by hand in browser DevTools — and goes considerably deeper. You give it a URL; it drives a real headless browser to that page, records every network request the page makes, runs a battery of passive and active security checks against what it captured, and then hands the whole picture to an LLM that writes up a prioritized risk report.
+ASTRA is a desktop security analysis tool that automates what you'd normally do by hand in browser DevTools — and goes considerably deeper. It works in two modes:
 
-It's built with Electron + TypeScript + Playwright and runs entirely on your machine. Nothing is captured or analyzed on a remote server — the only outbound call to a third party is the optional AI step, and that's something you opt into with your own API key.
+- **Website scan** — give it a URL; it drives a real headless browser to that page, records every network request, runs a battery of passive and active security checks, and hands the whole picture to an LLM that writes up a prioritized risk report.
+- **Repo scan** — give it a GitHub repository URL; it pulls the source (via the GitHub API or a full `git clone`) and scans for leaked secrets, vulnerable dependencies, CI/CD workflow risks, repo-hygiene problems, and insecure code patterns.
+
+It's built with Electron + TypeScript + Playwright and runs entirely on your machine. Nothing is captured or analyzed on a remote server — the only outbound calls to third parties are the optional AI step, OSV.dev dependency lookups, and the GitHub API, all of which you control.
 
 ---
 
@@ -15,6 +18,7 @@ It's built with Electron + TypeScript + Playwright and runs entirely on your mac
 - [What this project is](#what-this-project-is)
 - [How it works (end to end)](#how-it-works-end-to-end)
 - [What it does — module by module](#what-it-does--module-by-module)
+- [Repo Analyzer (GitHub repository scanning)](#repo-analyzer-github-repository-scanning)
 - [What you can find with it](#what-you-can-find-with-it)
 - [Architecture](#architecture)
 - [Data model](#data-model)
@@ -31,13 +35,14 @@ It's built with Electron + TypeScript + Playwright and runs entirely on your mac
 
 Most web reconnaissance starts the same way: open DevTools, watch the Network tab, click around, then manually pick apart headers, certificates, cookies, and third-party calls. It's slow, it's easy to miss things, and the findings live in your head instead of in a report.
 
-ASTRA collapses that workflow into a single action. It is three things at once:
+ASTRA collapses that workflow into a single action, and extends it to source code. It is several things at once:
 
 1. **A network capture engine** — a headless Chromium instance, controlled by Playwright, that loads any URL and records the full request/response timeline exactly as a browser sees it.
-2. **A security analysis suite** — ten focused modules that each examine the captured traffic (and in a few cases make their own follow-up probes) for a specific class of problem: TLS, headers, cookies, CORS, CSP, technology fingerprinting, CMS attack surface, API/secret exposure, DNS, and active vulnerabilities.
-3. **An AI reporting layer** — the consolidated scan output is streamed to a large language model (Groq's `llama-3.3-70b-versatile`) which produces an executive summary, ranked findings, and a remediation plan, and then answers follow-up questions in a chat.
+2. **A security analysis suite** — focused modules that each examine the captured traffic (and in a few cases make their own follow-up probes) for a specific class of problem: TLS, security headers, cookies, CORS, CSP, technology fingerprinting + CVE correlation, CMS attack surface, API/secret exposure, DNS, mixed content, and active vulnerabilities.
+3. **A GitHub repo scanner** — a second input mode that pulls a repository's source (GitHub API or full `git clone`) and scans for leaked secrets, vulnerable dependencies, CI/CD workflow risks, repo hygiene, and insecure code patterns.
+4. **An AI reporting layer** — the consolidated scan output is streamed to a large language model (Groq's `llama-3.3-70b-versatile`) which produces an executive summary, ranked findings, and a remediation plan, and then answers follow-up questions in a chat.
 
-The same core analysis runs in three delivery modes: a full Electron desktop app, a command-line tool, and a lightweight Express web dashboard.
+The website analysis core runs in three delivery modes: a full Electron desktop app, a command-line tool, and a lightweight Express web dashboard. The repo scanner runs in the desktop app.
 
 ---
 
@@ -84,15 +89,46 @@ After capture, the analysis modules run in parallel. Each owns one problem domai
 | **CORS Analyzer** | `security/cors.ts` | Flags wildcard origins on API endpoints, the impossible-but-telling wildcard + credentials combination, and credentialed access granted to **untrusted third-party** origins (subdomains of the target are treated as trusted). It deliberately does **not** flag standard REST patterns — `Authorization` headers or `PUT`/`DELETE` methods cross-origin — because those are normal and flagging them just buries real findings in noise. |
 | **CSP Analyzer** | `security/csp.ts` | Deep-parses Content-Security-Policy into directives and flags `unsafe-inline`, `unsafe-eval`, wildcard sources, `http:` schemes, `data:` in `script-src`, missing `frame-ancestors`, missing `upgrade-insecure-requests`, and report-only mode. Produces a 0–100 score and an A–F grade. |
 | **Technology Fingerprinter** | `security/fingerprint.ts` | Identifies frameworks (React, Angular, Vue, Next.js), CMS (WordPress, Drupal, Shopify, Umbraco), servers (nginx, Apache, IIS), CDNs (Cloudflare, Vercel, CloudFront, Fastly, Akamai), analytics, payment, and auth providers — from response headers and URL patterns. Extracts **version numbers** from `?ver=` params and asset URLs. Also tallies every third-party domain the page contacted, categorized. |
+| **CVE Correlation** | `security/cve.ts` | Takes fingerprinted components that have a detected version (jQuery, Bootstrap, React, Vue, Angular, Next.js, Express) and queries the free **OSV.dev** database for known vulnerabilities, surfacing matching CVE/GHSA advisories with severity. |
 | **CMS Attack Surface** | `security/fingerprint.ts` | When a CMS is detected, passively flags known exposure in the captured traffic. For WordPress: `xmlrpc.php` (brute-force amplification via `system.multicall`), REST API user enumeration (`/wp-json/wp/v2/users`), `readme.html`/`license.txt` version disclosure, exposed `wp-login.php`, and component versions leaked via `?ver=`. |
 | **API Endpoint Extractor** | `security/apiExtractor.ts` | Catalogs every XHR/fetch and mutating request. Detects auth type (Bearer, Basic, API key headers), decodes JWT headers and payloads, and scans for leaked secrets. It is **location-aware**: a Bearer token in a request `Authorization` header is *expected* and not flagged, whereas the same token in a URL or response body is reported as a leak — with a reason attached. |
 | **DNS Reconnaissance** | `security/dns.ts` | For every unique domain the page contacted, resolves A, AAAA, MX, TXT, NS, and CNAME records, and identifies subdomains of the target. Lookups are capped to avoid hanging on pages that touch dozens of domains. |
-| **Vulnerability Scanner** | `security/vulnScanner.ts` | The only actively intrusive module. Against detected endpoints it tests for SQL injection (error-based **and** time-based blind, using a baseline request for comparison so it isn't fooled by a naturally slow endpoint), reflected XSS (context-aware — a payload reflected inside an HTML comment or HTML-encoded is *not* flagged), path traversal (only on file-path-looking params), open redirects, IDOR (probing adjacent numeric IDs), and information disclosure (stack traces, PHP/DB errors, secrets in bodies — skipping JS/CSS responses to avoid false positives on minified code). |
+| **Mixed Content** | `security/mixedContent.ts` | On an HTTPS page, flags any sub-resource loaded over plain HTTP — `active` content (script/stylesheet/xhr) as high severity, `passive` content (image/media/font) as medium. |
+| **Vulnerability Scanner** | `security/vulnScanner.ts` | The only actively intrusive module — **disabled by default**, run only when the user explicitly opts in via a consent toggle. Against detected endpoints it tests for SQL injection (error-based **and** time-based blind, using a baseline request for comparison so it isn't fooled by a naturally slow endpoint), reflected XSS (context-aware — a payload reflected inside an HTML comment or HTML-encoded is *not* flagged), path traversal (only on file-path-looking params), open redirects, IDOR (probing adjacent numeric IDs), and information disclosure (stack traces, PHP/DB errors, secrets in bodies — skipping JS/CSS responses to avoid false positives on minified code). |
 
 ### AI Security Analysis
 The consolidated scan is summarized and streamed to **Groq (`llama-3.3-70b-versatile`)** over an OpenAI-compatible streaming endpoint. It produces an executive summary with an overall risk level, critical findings with concrete remediation steps, a third-party risk assessment, and a prioritized remediation plan tailored to the detected stack. A follow-up chat retains the scan context.
 
 > The integration file is named `src/ai/gemini.ts` for legacy reasons — it targets the Groq API, not Google Gemini.
+
+---
+
+## Repo Analyzer (GitHub repository scanning)
+
+Alongside website scanning, ASTRA can analyze a GitHub repository's **source code**. Click **Repo Analyzer** in the header, paste a repository URL, pick a mode with the Basic/Advanced toggle, and scan.
+
+### Two modes
+
+- **⚡ Basic (default)** — fetches the repository through the **GitHub REST API** plus the raw-content CDN. It sees the current snapshot of files on the default (or specified) branch. No `git` install required, fast, and works on any public repo.
+- **🔬 Advanced** — performs a full **`git clone`** into a temp directory and additionally scans the **entire git history** (`git log -p`) for secrets. This catches credentials that were committed and later "removed" but still live in history. Requires `git` on the PATH; slower on large repos.
+
+### What it scans
+
+| Scanner | File | What it finds |
+|---|---|---|
+| **Secret Scanner** | `repo/secretScanner.ts` | Hardcoded secrets across source files (and git history in Advanced mode): AWS keys, GitHub/Slack/Stripe/Twilio/SendGrid tokens, Google API keys, private keys, JWTs, connection strings with embedded passwords, and generic API-key assignments. Filters out placeholders (`your_api_key_here`, `process.env.X`) and redacts the matched value in the report. |
+| **Dependency Scanner** | `repo/depScanner.ts` | Parses `package-lock.json`, `package.json`, `requirements.txt`, `go.mod`, and `Gemfile.lock`, resolves versions, and queries **OSV.dev** for known-vulnerable dependencies. Prefers lock files for exact versions. |
+| **Workflow Scanner** | `repo/workflowScanner.ts` | GitHub Actions risks: `pull_request_target` misuse, script injection via untrusted `${{ github.event.* }}`, unpinned third-party actions (not pinned to a commit SHA), `permissions: write-all`, and self-hosted runners on public repos. |
+| **Hygiene Checks** | `repo/hygiene.ts` | Committed `.env` files, a `.gitignore` that doesn't ignore `.env` (or none at all), committed key/credential files (`.pem`, `.key`, keystores), missing `SECURITY.md`, and no Dependabot/Renovate config. |
+| **Code Pattern Scanner** | `repo/hygiene.ts` | Insecure code patterns: `eval()`, shell exec with string interpolation, `os.system`/`subprocess(shell=True)`, SQL string concatenation, weak hashes (MD5/SHA1), `Math.random()` for tokens, and disabled TLS verification. |
+
+### Scope and access
+
+- **Public repos** — anyone's, no authentication needed.
+- **Private repos** — only with a GitHub token that has access. Add one in Settings (stored encrypted via the OS keychain, same as the AI key) or via the `GITHUB_TOKEN` environment variable. A token also raises the API rate limit from 60 to 5,000 requests/hour.
+- All fetch/clone operations are bounded (file count, per-file size, total bytes, history patch size, clone timeout) so a huge or malicious repo can't exhaust resources. Cloned temp directories are always cleaned up.
+
+Unlike the website vulnerability scanner, repo scanning is **read-only** — it never attacks a running server, so no consent gate is required for public repos.
 
 ---
 
@@ -229,6 +265,8 @@ npm run electron
 ```
 Enter a URL, hit Analyze, and explore the tabbed results. Export to PDF/HAR/Markdown from the toolbar.
 
+To scan a repository instead, click **Repo Analyzer** in the header, paste a GitHub URL, choose **Basic** or **Advanced** with the toggle, and hit Scan.
+
 ### CLI
 ```bash
 npm run build
@@ -271,16 +309,26 @@ src/
     cors.ts           — CORS misconfiguration detection (low false-positive)
     csp.ts            — CSP analysis + security headers + cookie flag checks
     fingerprint.ts    — Technology detection + version extraction + CMS attack surface
+    cve.ts            — OSV.dev CVE correlation for fingerprinted components
     apiExtractor.ts   — API endpoint, JWT decode, location-aware secret leaks
     dns.ts            — DNS reconnaissance
-    vulnScanner.ts    — Active scanning with baseline comparison
+    mixedContent.ts   — HTTP-on-HTTPS mixed content detection
+    vulnScanner.ts    — Active scanning with baseline comparison (opt-in)
+  repo/               — GitHub repository scanner
+    githubUrl.ts      — GitHub URL/shorthand parsing and validation
+    fetchRepo.ts      — GitHub API fetch (basic) + git clone with history (advanced)
+    secretScanner.ts  — Hardcoded secret detection (files + git history)
+    depScanner.ts     — Manifest parsing + OSV.dev dependency CVE lookups
+    workflowScanner.ts — GitHub Actions workflow risk analysis
+    hygiene.ts        — Repo hygiene + insecure code pattern checks
+    index.ts          — Repo analysis orchestrator
   __tests__/          — Vitest + fast-check property tests
 electron/
-  main.ts             — Main process: IPC handlers, pipeline orchestration, PDF, key mgmt
+  main.ts             — Main process: IPC handlers, pipeline orchestration, PDF, key/token mgmt
   preload.ts          — contextBridge security boundary (window.electronAPI)
-  index.html          — Dashboard shell
-  app.js              — Renderer: analysis flow, tab switching, exports
-  views.js            — Renderer: per-tab render functions
+  index.html          — Dashboard shell + website/repo hero + Basic/Advanced toggle
+  app.js              — Renderer: analysis flow, repo scan, mode switching, exports
+  views.js            — Renderer: per-tab render functions + repo view (HTML-escaped)
   ai.js               — Renderer: streaming AI analysis + chat
   styles.css          — Dashboard styling
 ```
@@ -293,6 +341,8 @@ electron/
 - **Playwright** — headless Chromium for real-browser network capture
 - **TypeScript** — strict mode throughout
 - **Groq (`llama-3.3-70b-versatile`)** — AI analysis via OpenAI-compatible streaming API
+- **OSV.dev** — free open-source vulnerability database for dependency/component CVE lookups
+- **GitHub REST API + git** — repository fetching for the repo scanner
 - **Vitest + fast-check** — property-based testing for the pure core
 - **Express** — optional web dashboard
 - **Commander** — CLI argument parsing
@@ -305,13 +355,15 @@ electron/
 npm test
 ```
 
-32 tests across 4 suites cover URL normalization/validation, metrics computation, Markdown report rendering, and HAR round-trip — using property-based testing with fast-check, which generates large numbers of random inputs to surface edge cases a handful of hand-written cases would miss.
+86 tests across 6 suites cover URL normalization/validation, metrics computation, Markdown report rendering, HAR round-trip, the security analysis modules (CSP, headers, cookies, CORS false-positive guards, API leak detection, fingerprinting, mixed content), and the repo scanner (GitHub URL parsing, secret detection + redaction, workflow analysis, hygiene, code patterns) — using a mix of example-based and property-based testing with fast-check.
 
 ---
 
 ## Security and privacy notes
 
-- **The vulnerability scanner sends real, intrusive HTTP requests** (injection payloads, traversal strings, adjacent-ID probes) to the target. Only run it against systems you own or are explicitly authorized to test.
-- **The AI feature transmits scan data** (headers, URLs, findings) to Groq's API. Don't run it on scans that contain credentials or sensitive internal URLs.
-- **API keys are encrypted at rest** using your OS keychain via Electron's `safeStorage`, and `.env` is gitignored. Secrets are never written into reports or committed.
-- **The renderer is sandboxed** — `contextIsolation` on, `nodeIntegration` off, with all privileged operations mediated through the preload bridge.
+- **The vulnerability scanner sends real, intrusive HTTP requests** (injection payloads, traversal strings, adjacent-ID probes) to the target. It is **off by default** and only runs when you tick the consent toggle. Only run it against systems you own or are explicitly authorized to test.
+- **Repo scanning is read-only** — it fetches/clones source and analyzes it locally; it never attacks a server. Treat any secrets it finds in someone else's repo responsibly (report, don't abuse).
+- **The AI feature transmits scan data** (headers, URLs, findings) to Groq's API, with detected secret values redacted to `[REDACTED]` before sending. Still, don't run it on scans containing sensitive internal URLs you don't want leaving your machine.
+- **Dependency/CVE lookups query OSV.dev** with package names and versions only — no source code is sent.
+- **API keys and GitHub tokens are encrypted at rest** using your OS keychain via Electron's `safeStorage`, and `.env` is gitignored. Secrets are never written into reports or committed.
+- **The renderer is sandboxed** — `contextIsolation` on, `nodeIntegration` off, with all privileged operations mediated through the preload bridge. All scan data (including hostile site headers and repo contents) is HTML-escaped before rendering, and the PDF export escapes the same way.
