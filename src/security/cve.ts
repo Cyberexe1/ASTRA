@@ -85,6 +85,26 @@ function normalizeSeverity(vuln: OsvVuln): CveFinding['severity'] {
 }
 
 /**
+ * Looks up known vulnerabilities for a single package version via OSV.dev.
+ * Reusable by both the fingerprint correlator and the repo dependency scanner.
+ */
+export async function lookupPackageCves(
+  ecosystem: string,
+  name: string,
+  version: string,
+  componentLabel?: string,
+): Promise<CveFinding[]> {
+  const vulns = await queryOsv(ecosystem, name, version);
+  return vulns.slice(0, 10).map<CveFinding>((v) => ({
+    component: componentLabel ?? name,
+    version,
+    id: v.id ?? 'UNKNOWN',
+    severity: normalizeSeverity(v),
+    summary: (v.summary ?? v.details ?? 'No summary available').slice(0, 200),
+  }));
+}
+
+/**
  * Correlates fingerprinted technologies (that have a detected version) against
  * the OSV.dev vulnerability database. Best-effort and network-dependent:
  * any failure yields no findings rather than throwing.
@@ -97,14 +117,7 @@ export async function correlateCves(technologies: TechSignature[]): Promise<CveF
   const results = await Promise.all(
     targets.map(async (t) => {
       const pkg = OSV_PACKAGE_MAP[t.name];
-      const vulns = await queryOsv(pkg.ecosystem, pkg.name, t.version as string);
-      return vulns.slice(0, 10).map<CveFinding>((v) => ({
-        component: t.name,
-        version: t.version as string,
-        id: v.id ?? 'UNKNOWN',
-        severity: normalizeSeverity(v),
-        summary: (v.summary ?? v.details ?? 'No summary available').slice(0, 200),
-      }));
+      return lookupPackageCves(pkg.ecosystem, pkg.name, t.version as string, t.name);
     })
   );
 

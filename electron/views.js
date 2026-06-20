@@ -518,3 +518,107 @@ function vulnView(vuln) {
   </table></div>
   <p style="color:var(--muted);font-size:0.78rem;margin-top:12px">⚠ Automated scan only. Verify findings manually before reporting.</p>`;
 }
+
+
+// ─── Repo Analyzer view ───────────────────────────────────────────────────────
+function repoView(data) {
+  const sevColor = { critical: 'var(--red)', high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--muted)', info: 'var(--muted)', unknown: 'var(--muted)' };
+  const s = data.summary;
+
+  const sevCard = (label, n, color) =>
+    `<div class="card" style="min-width:96px"><div class="label">${label}</div><div class="value" style="color:${n ? color : 'var(--muted)'}">${n}</div></div>`;
+
+  const header = `
+    <div style="display:flex;align-items:center;gap:10px;margin:24px 0 4px">
+      <h2 style="font-size:1.3rem;font-weight:800;margin:0">${esc(data.repo.owner)}/${esc(data.repo.repo)}</h2>
+      <span class="pill pill-type">${esc(data.repo.branch)}</span>
+      <span class="pill" style="background:var(--surface2);color:var(--muted)">${esc(data.mode)} mode</span>
+    </div>
+    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:16px">
+      ${data.fileCount} files scanned${data.historyCommits ? ` · ${data.historyCommits} commits` : ''} · source: ${esc(data.source)}
+    </div>`;
+
+  const warnings = (data.warnings && data.warnings.length)
+    ? `<div style="margin-bottom:16px">${data.warnings.map(w =>
+        `<div style="font-size:0.8rem;color:var(--yellow);padding:2px 0">⚠ ${esc(w)}</div>`).join('')}</div>`
+    : '';
+
+  const summaryCards = `<div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap">
+    ${sevCard('Total', s.total, 'var(--accent)')}
+    ${sevCard('Critical', s.critical, 'var(--red)')}
+    ${sevCard('High', s.high, 'var(--red)')}
+    ${sevCard('Medium', s.medium, 'var(--yellow)')}
+    ${sevCard('Low', s.low, 'var(--muted)')}
+  </div>`;
+
+  // Secrets
+  const secretsSection = data.secrets.length
+    ? `<div class="section"><h3>Leaked Secrets <span class="badge">${data.secrets.length}</span></h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Severity</th><th>Type</th><th>Location</th><th>Match</th><th>Source</th></tr></thead>
+          <tbody>${data.secrets.map(f => `<tr>
+            <td><span class="pill" style="background:${sevColor[f.severity]}22;color:${sevColor[f.severity]}">${esc((f.severity || '').toUpperCase())}</span></td>
+            <td style="font-weight:600;color:var(--red)">${esc(f.type)}</td>
+            <td class="url-cell" title="${esc(f.file)}">${trunc(f.file, 44)}${f.line ? ':' + f.line : ''}</td>
+            <td style="font-family:monospace;font-size:0.72rem">${esc(f.match)}</td>
+            <td>${f.inHistory ? '<span class="pill pill-3xx">git history</span>' : '<span class="pill pill-2xx">current</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div></div>`
+    : '<div class="section"><h3>Leaked Secrets</h3><p style="color:var(--green)">✓ No hardcoded secrets detected</p></div>';
+
+  // Dependencies
+  const depSection = data.dependencies.length
+    ? `<div class="section"><h3>Vulnerable Dependencies <span class="badge">${data.dependencies.length}</span></h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Package</th><th>Version</th><th>Ecosystem</th><th>Advisories</th></tr></thead>
+          <tbody>${data.dependencies.map(d => `<tr>
+            <td style="font-weight:600">${esc(d.package)}${d.approximate ? ' <span style="color:var(--muted);font-size:0.7rem">(approx)</span>' : ''}</td>
+            <td style="font-family:monospace;font-size:0.74rem">${esc(d.version)}</td>
+            <td><span class="pill pill-type">${esc(d.ecosystem)}</span></td>
+            <td style="font-size:0.74rem">${d.cves.map(c =>
+              `<div style="margin:2px 0"><span class="pill" style="background:${sevColor[c.severity]}22;color:${sevColor[c.severity]}">${esc((c.severity || '').toUpperCase())}</span> <span style="font-family:monospace">${esc(c.id)}</span> — ${esc(c.summary)}</div>`).join('')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div></div>`
+    : '<div class="section"><h3>Vulnerable Dependencies</h3><p style="color:var(--green)">✓ No known-vulnerable dependencies found (or no parseable manifests)</p></div>';
+
+  // Workflows
+  const wfSection = data.workflows.length
+    ? `<div class="section"><h3>CI/CD Workflow Risks <span class="badge">${data.workflows.length}</span></h3>
+        ${data.workflows.map(w => `<div class="sec-card" style="margin-bottom:8px;border-left:3px solid ${sevColor[w.severity]}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span class="pill" style="background:${sevColor[w.severity]}22;color:${sevColor[w.severity]}">${esc((w.severity || '').toUpperCase())}</span>
+            <span style="font-weight:700;font-size:0.82rem">${esc(w.issue)}</span>
+            <span style="font-size:0.7rem;color:var(--muted);margin-left:auto;font-family:monospace">${esc(w.file)}</span>
+          </div>
+          <div style="font-size:0.76rem;color:var(--muted)">${esc(w.detail)}</div>
+        </div>`).join('')}</div>`
+    : '';
+
+  // Hygiene
+  const hygieneSection = data.hygiene.length
+    ? `<div class="section"><h3>Repository Hygiene <span class="badge">${data.hygiene.length}</span></h3>
+        ${data.hygiene.map(h => `<div class="sec-card" style="margin-bottom:8px;border-left:3px solid ${sevColor[h.severity]}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span class="pill" style="background:${sevColor[h.severity]}22;color:${sevColor[h.severity]}">${esc((h.severity || '').toUpperCase())}</span>
+            <span style="font-weight:700;font-size:0.82rem">${esc(h.finding)}</span>
+          </div>
+          <div style="font-size:0.76rem;color:var(--muted)">${esc(h.detail)}</div>
+        </div>`).join('')}</div>`
+    : '';
+
+  // Code patterns
+  const codeSection = data.codePatterns.length
+    ? `<div class="section"><h3>Insecure Code Patterns <span class="badge">${data.codePatterns.length}</span></h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Severity</th><th>Type</th><th>Location</th><th>Snippet</th></tr></thead>
+          <tbody>${data.codePatterns.map(c => `<tr>
+            <td><span class="pill" style="background:${sevColor[c.severity]}22;color:${sevColor[c.severity]}">${esc((c.severity || '').toUpperCase())}</span></td>
+            <td style="font-weight:600">${esc(c.type)}</td>
+            <td class="url-cell" title="${esc(c.file)}">${trunc(c.file, 44)}:${c.line}</td>
+            <td style="font-family:monospace;font-size:0.7rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.snippet)}">${esc(c.snippet)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div></div>`
+    : '';
+
+  return header + warnings + summaryCards + secretsSection + depSection + wfSection + hygieneSection + codeSection;
+}

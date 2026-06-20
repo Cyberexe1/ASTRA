@@ -497,3 +497,94 @@ document.getElementById('urlInput')
     }
   });
 
+
+
+// ─── Repo Analyzer ────────────────────────────────────────────────────────────
+
+function showRepoMode() {
+  document.getElementById('websiteHero').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('repoHero').style.display = 'flex';
+  const existing = document.getElementById('repoResults');
+  if (existing && existing.innerHTML.trim()) existing.style.display = 'block';
+  if (window.repoAdvanced === undefined) setRepoMode(false);
+  document.getElementById('repoInput')?.focus();
+}
+
+function showWebsiteMode() {
+  document.getElementById('repoHero').style.display = 'none';
+  document.getElementById('repoResults').style.display = 'none';
+  document.getElementById('websiteHero').style.display = 'flex';
+  document.getElementById('urlInput')?.focus();
+}
+
+function setRepoMode(advanced) {
+  window.repoAdvanced = advanced === true;
+
+  const basic = document.getElementById('modeBasic');
+  const adv = document.getElementById('modeAdvanced');
+  const text = document.getElementById('advancedModeText');
+  const btn = document.getElementById('repoAnalyzeBtn');
+
+  // Active pill styling
+  if (basic && adv) {
+    if (window.repoAdvanced) {
+      adv.style.background = 'var(--accent)';
+      adv.style.color = '#fff';
+      adv.setAttribute('aria-selected', 'true');
+      basic.style.background = 'transparent';
+      basic.style.color = 'var(--muted2)';
+      basic.setAttribute('aria-selected', 'false');
+    } else {
+      basic.style.background = 'var(--accent)';
+      basic.style.color = '#fff';
+      basic.setAttribute('aria-selected', 'true');
+      adv.style.background = 'transparent';
+      adv.style.color = 'var(--muted2)';
+      adv.setAttribute('aria-selected', 'false');
+    }
+  }
+
+  if (text) {
+    text.innerHTML = window.repoAdvanced
+      ? '<strong style="color:var(--accent2)">Advanced mode</strong> — full <code>git clone</code> including ' +
+        '<strong>git history</strong> secret scanning (requires git installed; slower on large repos).'
+      : '<strong style="color:var(--text)">Basic mode</strong> — fast GitHub API snapshot scan of current files (no git required).';
+  }
+
+  if (btn) btn.textContent = window.repoAdvanced ? 'Deep Scan' : 'Scan Repo';
+}
+
+async function analyzeRepo() {
+  const url = document.getElementById('repoInput').value.trim();
+  if (!url) return;
+
+  const advanced = window.repoAdvanced === true;
+  const btn = document.getElementById('repoAnalyzeBtn');
+  const status = document.getElementById('repoStatus');
+  const results = document.getElementById('repoResults');
+
+  btn.disabled = true;
+  status.innerHTML = '<span class="spinner"></span>' +
+    (advanced ? 'Cloning repository and scanning git history…' : 'Fetching repository from GitHub…');
+  results.style.display = 'none';
+
+  try {
+    const data = await window.electronAPI.analyzeRepo(url, { advanced });
+    window.lastRepoData = data;
+    status.innerHTML = '<span style="color:var(--green)">✓</span> <span>Scanned ' +
+      data.fileCount + ' files' + (data.historyCommits ? ' across ' + data.historyCommits + ' commits' : '') +
+      ' — ' + data.summary.total + ' findings</span>';
+    results.innerHTML = repoView(data);
+    results.style.display = 'block';
+  } catch (err) {
+    status.innerHTML = '<span style="color:var(--red)">✗ ' +
+      escHtml(err.message || String(err)) + '</span>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('repoInput')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyzeRepo();
+});

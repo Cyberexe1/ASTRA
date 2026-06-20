@@ -19,6 +19,7 @@ import { analyzeCsp, analyzeSecurityHeaders, analyzeCookies } from '../src/secur
 import { runVulnScan } from '../src/security/vulnScanner.js';
 import { findMixedContent } from '../src/security/mixedContent.js';
 import { correlateCves } from '../src/security/cve.js';
+import { analyzeRepo } from '../src/repo/index.js';
 import { streamGeminiAnalysis, streamGeminiChat, validateApiKey } from '../src/ai/gemini.js';
 import type { GeminiMessage } from '../src/ai/gemini.js';
 
@@ -137,8 +138,34 @@ ipcMain.handle('open-external', (_event, url: string) => {
   shell.openExternal(url);
 });
 
+// ─── IPC: analyze GitHub repository ───────────────────────────────────────────
+ipcMain.handle('analyze-repo', async (_event, rawUrl: string, options: { advanced?: boolean } = {}) => {
+  // Reuse the encrypted Groq-key storage path's directory for an optional GitHub token.
+  let token: string | undefined;
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const data = await readFile(GITHUB_TOKEN_FILE);
+    token = safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(data)
+      : data.toString('utf8');
+  } catch {
+    token = process.env.GITHUB_TOKEN ?? undefined;
+  }
+  return analyzeRepo(rawUrl, { advanced: options.advanced === true, token });
+});
+
+ipcMain.handle('save-github-token', async (_event, value: string) => {
+  const { writeFile } = await import('node:fs/promises');
+  if (!safeStorage.isEncryptionAvailable()) {
+    await writeFile(GITHUB_TOKEN_FILE, value, 'utf8');
+  } else {
+    await writeFile(GITHUB_TOKEN_FILE, safeStorage.encryptString(value));
+  }
+});
+
 // ─── IPC: API key management (encrypted via safeStorage) ─────────────────────
 const KEY_FILE = join(app.getPath('userData'), 'gemini-key.enc');
+const GITHUB_TOKEN_FILE = join(app.getPath('userData'), 'github-token.enc');
 
 ipcMain.handle('save-api-key', async (_event, apiKey: string) => {
   const { writeFile } = await import('node:fs/promises');
