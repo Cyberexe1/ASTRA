@@ -17,6 +17,8 @@ import { fingerprintTechnologies } from '../src/security/fingerprint.js';
 import { runDnsRecon } from '../src/security/dns.js';
 import { analyzeCsp, analyzeSecurityHeaders, analyzeCookies } from '../src/security/csp.js';
 import { runVulnScan } from '../src/security/vulnScanner.js';
+import { findMixedContent } from '../src/security/mixedContent.js';
+import { correlateCves } from '../src/security/cve.js';
 import { streamGeminiAnalysis, streamGeminiChat, validateApiKey } from '../src/ai/gemini.js';
 import type { GeminiMessage } from '../src/ai/gemini.js';
 
@@ -60,7 +62,7 @@ app.on('activate', () => {
 });
 
 // ─── IPC: analyze URL ─────────────────────────────────────────────────────────
-ipcMain.handle('analyze', async (_event, rawUrl: string) => {
+ipcMain.handle('analyze', async (_event, rawUrl: string, options: { activeScan?: boolean } = {}) => {
   const validation = normalizeAndValidate(rawUrl);
   if (!validation.ok) throw new Error(validation.error);
 
@@ -84,12 +86,28 @@ ipcMain.handle('analyze', async (_event, rawUrl: string) => {
   const securityHeaders = analyzeSecurityHeaders(capture.requests);
   const cookieIssues = analyzeCookies(capture.requests);
 
-  // Run vuln scan against detected API endpoints (non-blocking, best-effort)
-  const vulnResult = await runVulnScan(api).catch(() => ({
+  // Mixed-content detection (HTTP sub-resources on an HTTPS page)
+  const mixedContent = findMixedContent(capture.requests, validation.url);
+
+  // CVE correlation for fingerprinted components with known versions
+  let fingerprintValue = fingerprint.status === 'fulfilled' ? fingerprint.value : null;
+  if (fingerprintValue) {
+    try {
+      const cves = await correlateCves(fingerprintValue.technologies);
+      fingerprintValue = { ...fingerprintValue, cves };
+    } catch { /* CVE lookup is best-effort */ }
+  }
+
+  // Active vulnerability scan is INTRUSIVE and OFF BY DEFAULT.
+  // It only runs when the caller explicitly opts in (authorized-target consent).
+  const emptyVuln = {
     findings: { sqli: [], xss: [], idor: [], pathTraversal: [], openRedirect: [], infoDisclosure: [] },
     scannedEndpoints: 0,
     duration: 0,
-  }));
+  };
+  const vulnResult = options.activeScan === true
+    ? await runVulnScan(api).catch(() => emptyVuln)
+    : { ...emptyVuln, skipped: true };
 
   return {
     url: validation.url,
@@ -104,11 +122,12 @@ ipcMain.handle('analyze', async (_event, rawUrl: string) => {
     tls: tlsResult.status === 'fulfilled' ? tlsResult.value : { error: (tlsResult.reason as Error).message },
     cors: corsReport.status === 'fulfilled' ? corsReport.value : { findings: [], summary: {} },
     api,
-    fingerprint: fingerprint.status === 'fulfilled' ? fingerprint.value : null,
+    fingerprint: fingerprintValue,
     dns: dnsReport.status === 'fulfilled' ? dnsReport.value : null,
     csp: cspReport.status === 'fulfilled' ? cspReport.value : null,
     securityHeaders,   // X-Content-Type-Options, Referrer-Policy, Permissions-Policy, etc.
     cookieIssues,      // HttpOnly, Secure, SameSite flag analysis
+    mixedContent,      // HTTP resources loaded on an HTTPS page
     vuln: vulnResult,
   };
 });

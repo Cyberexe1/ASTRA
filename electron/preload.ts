@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  analyze: (url: string) => ipcRenderer.invoke('analyze', url),
+  analyze: (url: string, options?: { activeScan?: boolean }) => ipcRenderer.invoke('analyze', url, options),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   exportPdf: (html: string) => ipcRenderer.invoke('export-pdf', html),
 

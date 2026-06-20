@@ -21,6 +21,10 @@ export interface NetworkRequest {
   responseHeaders: Record<string, string>;
   failed: boolean;
   errorText?: string;
+  /** Request body / POST data, if any (bounded). */
+  requestBody?: string;
+  /** Bounded sample of the response body for passive analysis. */
+  responseBodySample?: string;
 }
 
 export interface CaptureOptions {
@@ -65,6 +69,7 @@ export interface ReportInput {
 export interface HarEntry {
   startedDateTime: string; // ISO 8601
   time: number;            // total duration ms
+  _resourceType?: string;  // custom field — preserves our ResourceType across round-trip
   request: {
     method: string;
     url: string;

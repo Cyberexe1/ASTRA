@@ -1,4 +1,5 @@
 import type { NetworkRequest } from '../types.js';
+import type { CveFinding } from './cve.js';
 
 export interface TechSignature {
   name: string;
@@ -15,6 +16,8 @@ export interface FingerprintReport {
   thirdPartyDomains: ThirdPartyDomain[];
   /** CMS-specific attack surface findings — e.g. WordPress xmlrpc, user enumeration */
   cmsExposure: CmsExposureFinding[];
+  /** Known CVEs for fingerprinted components (populated by the cve module). */
+  cves?: CveFinding[];
 }
 
 export interface ThirdPartyDomain {

@@ -16,6 +16,7 @@ export function generateHar(requests: NetworkRequest[], captureTimestamp: string
   const entries: HarEntry[] = requests.map((r) => ({
     startedDateTime: captureTimestamp,
     time: r.durationMs,
+    _resourceType: r.resourceType,
     request: {
       method: r.method,
       url: r.url,
@@ -25,7 +26,7 @@ export function generateHar(requests: NetworkRequest[], captureTimestamp: string
     response: {
       status: r.statusCode ?? 0,
       headers: headersToHar(r.responseHeaders),
-      content: { size: r.sizeBytes, mimeType: '' },
+      content: { size: r.sizeBytes, mimeType: r.responseHeaders['content-type'] ?? r.responseHeaders['Content-Type'] ?? '' },
       bodySize: r.sizeBytes,
     },
     timings: {
@@ -37,15 +38,22 @@ export function generateHar(requests: NetworkRequest[], captureTimestamp: string
   return { log: { version: '1.2', creator: CREATOR, entries } };
 }
 
+const VALID_RESOURCE_TYPES = new Set<ResourceType>([
+  'document', 'script', 'stylesheet', 'image', 'xhr', 'fetch', 'font', 'media', 'other',
+]);
+
 export function parseHar(json: string): NetworkRequest[] {
   const har: HarFile = JSON.parse(json);
   return har.log.entries.map((entry) => {
     const statusCode = entry.response.status === 0 ? null : entry.response.status;
     const failed = statusCode === null;
+    // Restore resourceType from our custom field; fall back to 'other'
+    const rt = entry._resourceType as ResourceType | undefined;
+    const resourceType: ResourceType = rt && VALID_RESOURCE_TYPES.has(rt) ? rt : 'other';
     return {
       url: entry.request.url,
       method: entry.request.method,
-      resourceType: 'other' as ResourceType,
+      resourceType,
       statusCode,
       sizeBytes: entry.response.content.size,
       ttfbMs: entry.timings.wait,

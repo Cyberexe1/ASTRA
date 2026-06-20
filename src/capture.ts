@@ -1,6 +1,16 @@
 import { chromium, type Request, type Response } from 'playwright';
 import type { NetworkRequest, CaptureOptions, CaptureResult, ResourceType } from './types.js';
 
+// Cap how much of any response body we read into memory / store as a sample.
+// Protects against multi-hundred-MB media or downloads exhausting memory.
+const MAX_BODY_SAMPLE_BYTES = 256 * 1024; // 256 KB
+
+// Only sample bodies for textual content types worth analyzing.
+function isTextual(contentType: string | undefined): boolean {
+  if (!contentType) return false;
+  return /text\/|json|javascript|xml|html|csv|x-www-form-urlencoded/i.test(contentType);
+}
+
 const PLAYWRIGHT_TYPE_MAP: Record<string, ResourceType> = {
   document: 'document',
   script: 'script',
@@ -87,19 +97,48 @@ export async function captureNetwork(options: CaptureOptions): Promise<CaptureRe
     page.on('requestfinished', async (req) => {
       const entry = requestMap.get(req);
       if (!entry) return;
-      const durationMs = Date.now() - entry.startTime;
       const timing = req.timing();
+      // Prefer Playwright's own timing for both TTFB and duration so the two
+      // numbers come from the same clock. Fall back to wall-clock if unavailable.
       const ttfbMs = timing.responseStart >= 0 ? timing.responseStart : 0;
+      const durationMs = timing.responseEnd >= 0
+        ? timing.responseEnd
+        : Date.now() - entry.startTime;
 
+      // Measure size from Content-Length when present; only read the body when
+      // we must, and cap the read so large media/downloads can't exhaust memory.
       let sizeBytes = 0;
+      let responseBodySample: string | undefined;
       try {
         const resp = await req.response();
-        const body = await resp?.body();
-        sizeBytes = body?.length ?? 0;
+        const contentLength = Number(resp?.headers()['content-length'] ?? NaN);
+        if (Number.isFinite(contentLength) && contentLength >= 0) {
+          sizeBytes = contentLength;
+          // Still grab a small text sample for passive analysis on textual types
+          if (contentLength > 0 && contentLength <= MAX_BODY_SAMPLE_BYTES && isTextual(resp?.headers()['content-type'])) {
+            const body = await resp?.body();
+            sizeBytes = body?.length ?? contentLength;
+            responseBodySample = body?.toString('utf8').slice(0, MAX_BODY_SAMPLE_BYTES);
+          }
+        } else {
+          // No Content-Length — read with a cap
+          const body = await resp?.body();
+          const buf = body ?? Buffer.alloc(0);
+          sizeBytes = buf.length;
+          if (isTextual(resp?.headers()['content-type'])) {
+            responseBodySample = buf.toString('utf8').slice(0, MAX_BODY_SAMPLE_BYTES);
+          }
+        }
       } catch { /* ignore body read errors */ }
 
+      let requestBody: string | undefined;
+      try {
+        const pd = req.postData();
+        if (pd) requestBody = pd.slice(0, MAX_BODY_SAMPLE_BYTES);
+      } catch { /* no post data */ }
+
       const mapped = mapRequest(req, entry.response, { startTime: entry.startTime, ttfbMs, durationMs });
-      finishedRequests.push({ ...mapped, sizeBytes });
+      finishedRequests.push({ ...mapped, sizeBytes, requestBody, responseBodySample });
     });
 
     page.on('requestfailed', (req) => {

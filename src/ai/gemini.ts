@@ -32,6 +32,17 @@ function toGroqMessages(messages: GeminiMessage[]): GroqMessage[] {
 function buildScanSummaryPrompt(scanData: unknown): string {
   const d = scanData as Record<string, unknown>;
 
+  // Redact the actual secret value while keeping its type/location so the model
+  // can still reason about the finding. Prevents forwarding live credentials to
+  // the third-party AI API.
+  const redactLeaks = (leaks: unknown): unknown => {
+    if (!Array.isArray(leaks)) return leaks;
+    return leaks.map((l) => {
+      const leak = l as Record<string, unknown>;
+      return { ...leak, value: '[REDACTED]' };
+    });
+  };
+
   const summary = {
     url: d.url,
     capturedAt: d.captureTimestamp,
@@ -64,7 +75,7 @@ function buildScanSummaryPrompt(scanData: unknown): string {
         statusCode: ep.statusCode,
         jwtCount: (ep.jwts as unknown[])?.length ?? 0,
         leakCount: (ep.sensitiveLeaks as unknown[])?.length ?? 0,
-        sensitiveLeaks: ep.sensitiveLeaks,
+        sensitiveLeaks: redactLeaks(ep.sensitiveLeaks),
       };
     }),
     vulnFindings: d.vuln ? {

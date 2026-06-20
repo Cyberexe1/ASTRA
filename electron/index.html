@@ -235,6 +235,10 @@
         <input id="urlInput" type="text" placeholder="https://example.com" autocomplete="off" spellcheck="false"/>
         <button id="analyzeBtn" onclick="analyze()">Analyze</button>
       </div>
+      <label id="activeScanLabel" style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.8rem;color:var(--muted);cursor:pointer;user-select:none">
+        <input id="activeScanToggle" type="checkbox" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer"/>
+        <span>Enable active vulnerability scan (intrusive — sends attack payloads). Only for targets you own or are authorized to test.</span>
+      </label>
       <div id="status">
         <span style="opacity:0.6">ℹ</span>
         <span>Enter a URL to begin</span>

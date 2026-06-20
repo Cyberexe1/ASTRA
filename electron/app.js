@@ -1,6 +1,19 @@
 
 window.lastData = null;
 
+// HTML-escape untrusted scan data before embedding it in the PDF template.
+// The PDF is rendered in a BrowserWindow with JavaScript enabled, so unescaped
+// content from a scanned site would otherwise execute as script.
+function escHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function render(data) {
 
   window.lastData = data;
@@ -136,7 +149,7 @@ function render(data) {
     );
 
   document.getElementById('tab-security').innerHTML =
-    securityView(data.requests, data.securityHeaders);
+    securityView(data.requests, data.securityHeaders, data.mixedContent);
 
   document.getElementById('tab-cookies').innerHTML =
     cookiesView(data.requests, data.cookieIssues);
@@ -250,8 +263,11 @@ async function analyze() {
 
   try {
 
+    const activeScan =
+      document.getElementById('activeScanToggle')?.checked === true;
+
     const data =
-      await window.electronAPI.analyze(url);
+      await window.electronAPI.analyze(url, { activeScan });
 
     status.textContent =
 
@@ -410,7 +426,7 @@ async function downloadPdf() {
     @media print{body{padding:0}}
   </style></head><body>
   <h1>ASTRA — Security Analysis Report</h1>
-  <div class="meta"><strong>URL:</strong> ${d.url} &nbsp;|&nbsp; <strong>Captured:</strong> ${d.captureTimestamp} &nbsp;|&nbsp; <strong>Generated:</strong> ${new Date().toISOString()}</div>
+  <div class="meta"><strong>URL:</strong> ${escHtml(d.url)} &nbsp;|&nbsp; <strong>Captured:</strong> ${escHtml(d.captureTimestamp)} &nbsp;|&nbsp; <strong>Generated:</strong> ${escHtml(new Date().toISOString())}</div>
   <h2>Summary</h2>
   <div class="card-row">
     <div class="card"><div class="label">Total Requests</div><div class="value">${d.aggregate.totalRequests}</div></div>
@@ -423,35 +439,35 @@ async function downloadPdf() {
   ${d.tls && !d.tls.error ? `
     <div class="card-row">
       <div class="card"><div class="label">Grade</div><div class="value" style="color:${{'A+':'#34d399','A':'#34d399','B':'#fbbf24','C':'#fbbf24','F':'#f87171'}[d.tls.grade]||'#8892b0'}">${d.tls.grade}</div></div>
-      <div class="card"><div class="label">Protocol</div><div class="value" style="font-size:14px">${d.tls.protocol}</div></div>
-      <div class="card"><div class="label">Cert Expires</div><div class="value" style="font-size:12px;color:${d.tls.cert.daysUntilExpiry<30?'#f87171':'#34d399'}">${d.tls.cert.daysUntilExpiry}d</div></div>
+      <div class="card"><div class="label">Protocol</div><div class="value" style="font-size:14px">${escHtml(d.tls.protocol)}</div></div>
+      <div class="card"><div class="label">Cert Expires</div><div class="value" style="font-size:12px;color:${d.tls.cert.daysUntilExpiry<30?'#f87171':'#34d399'}">${escHtml(d.tls.cert.daysUntilExpiry)}d</div></div>
     </div>
-    ${d.tls.issues.length ? d.tls.issues.map(i=>`<div class="issue">⚠ ${i}</div>`).join('') : '<p style="color:#34d399">✓ No TLS issues</p>'}
-  ` : `<p style="color:#f87171">${d.tls?.error||'Not available'}</p>`}
+    ${d.tls.issues.length ? d.tls.issues.map(i=>`<div class="issue">⚠ ${escHtml(typeof i === 'string' ? i : i.issue)}</div>`).join('') : '<p style="color:#34d399">✓ No TLS issues</p>'}
+  ` : `<p style="color:#f87171">${escHtml(d.tls?.error||'Not available')}</p>`}
   <h2>CSP Analysis</h2>
-  ${d.csp ? `<p><strong>Grade: ${d.csp.grade}</strong> — Score: ${d.csp.score}/100</p>
-    ${d.csp.issues.map(i=>`<div class="issue"><strong>${i.severity.toUpperCase()}:</strong> ${i.issue} — ${i.recommendation}</div>`).join('')}
+  ${d.csp ? `<p><strong>Grade: ${escHtml(d.csp.grade)}</strong> — Score: ${escHtml(d.csp.score)}/100</p>
+    ${d.csp.issues.map(i=>`<div class="issue"><strong>${escHtml((i.severity||'').toUpperCase())}:</strong> ${escHtml(i.issue)} — ${escHtml(i.recommendation)}</div>`).join('')}
   ` : '<p>Not available</p>'}
   <h2>CORS Findings</h2>
   ${d.cors?.findings?.length ? `<table><thead><tr><th>Risk</th><th>URL</th><th>Issue</th><th>Header</th></tr></thead><tbody>
-    ${d.cors.findings.map(f=>`<tr><td>${f.riskLevel.toUpperCase()}</td><td>${f.url.slice(0,60)}</td><td>${f.issue}</td><td style="font-family:monospace">${f.header}</td></tr>`).join('')}
+    ${d.cors.findings.map(f=>`<tr><td>${escHtml((f.riskLevel||'').toUpperCase())}</td><td>${escHtml(f.url.slice(0,60))}</td><td>${escHtml(f.issue)}</td><td style="font-family:monospace">${escHtml(f.header)}</td></tr>`).join('')}
   </tbody></table>` : '<p style="color:#34d399">✓ No CORS issues found</p>'}
   <h2>Technology Fingerprint</h2>
   ${d.fingerprint?.technologies?.length ? `<table><thead><tr><th>Technology</th><th>Category</th><th>Confidence</th><th>Evidence</th></tr></thead><tbody>
-    ${d.fingerprint.technologies.map(t=>`<tr><td><strong>${t.name}</strong>${t.version?' v'+t.version:''}</td><td>${t.category}</td><td>${t.confidence}</td><td>${t.evidence.slice(0,80)}</td></tr>`).join('')}
+    ${d.fingerprint.technologies.map(t=>`<tr><td><strong>${escHtml(t.name)}</strong>${t.version?' v'+escHtml(t.version):''}</td><td>${escHtml(t.category)}</td><td>${escHtml(t.confidence)}</td><td>${escHtml(t.evidence.slice(0,80))}</td></tr>`).join('')}
   </tbody></table>` : '<p>No technologies detected</p>'}
   <h2>Vulnerability Scan</h2>
-  ${d.vuln ? (() => { const all = Object.values(d.vuln.findings).flat();
+  ${d.vuln ? (d.vuln.skipped ? '<p style="color:#8892b0">Active scan not run (disabled by default — enable in Settings for authorized targets).</p>' : (() => { const all = Object.values(d.vuln.findings).flat();
     return all.length ? `<table><thead><tr><th>Severity</th><th>Type</th><th>URL</th><th>Description</th></tr></thead><tbody>
-      ${all.map(f=>`<tr><td>${f.severity.toUpperCase()}</td><td style="color:#f87171;font-weight:700">${f.type}</td><td style="font-family:monospace">${f.url.slice(0,60)}</td><td>${f.description}</td></tr>`).join('')}
-    </tbody></table>` : `<p style="color:#34d399">✓ No vulnerabilities detected (${d.vuln.scannedEndpoints} endpoints scanned)</p>`;
-  })() : '<p>Not available</p>'}
+      ${all.map(f=>`<tr><td>${escHtml((f.severity||'').toUpperCase())}</td><td style="color:#f87171;font-weight:700">${escHtml(f.type)}</td><td style="font-family:monospace">${escHtml(f.url.slice(0,60))}</td><td>${escHtml(f.description)}</td></tr>`).join('')}
+    </tbody></table>` : `<p style="color:#34d399">✓ No vulnerabilities detected (${escHtml(d.vuln.scannedEndpoints)} endpoints scanned)</p>`;
+  })()) : '<p>Not available</p>'}
   <h2>Full Request Log</h2>
   <table><thead><tr><th>URL</th><th>Method</th><th>Type</th><th>Status</th><th>Size</th><th>TTFB</th><th>Duration</th></tr></thead><tbody>
   ${(d.requests||[]).map(r=>`<tr>
-    <td style="font-family:monospace">${r.url.slice(0,70)}</td>
-    <td>${r.method}</td><td>${r.resourceType}</td>
-    <td>${r.failed?'FAILED':r.statusCode||'—'}</td>
+    <td style="font-family:monospace">${escHtml(r.url.slice(0,70))}</td>
+    <td>${escHtml(r.method)}</td><td>${escHtml(r.resourceType)}</td>
+    <td>${escHtml(r.failed?'FAILED':r.statusCode||'—')}</td>
     <td>${fmt(r.sizeBytes)}</td><td>${r.ttfbMs.toFixed(0)}ms</td><td>${r.durationMs.toFixed(0)}ms</td>
   </tr>`).join('')}
   </tbody></table>
