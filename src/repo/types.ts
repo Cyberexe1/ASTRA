@@ -1,4 +1,5 @@
 import type { CveFinding } from '../security/cve.js';
+import type { CodeHealthReport } from './codeHealth.js';
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
@@ -72,6 +73,8 @@ export interface RepoAnalysisResult {
   hygiene: HygieneFinding[];
   workflows: WorkflowFinding[];
   codePatterns: CodePatternFinding[];
+  /** Code quality / efficiency / accessibility scores (shown in both scan modes). */
+  codeHealth: CodeHealthReport;
   summary: {
     critical: number;
     high: number;

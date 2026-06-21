@@ -174,3 +174,68 @@ describe('scanCodePatterns', () => {
     expect(findings.length).toBe(0);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Code Health (quality / efficiency / accessibility)
+// ─────────────────────────────────────────────────────────────────────────────
+import { analyzeCodeHealth } from '../repo/codeHealth.js';
+
+describe('analyzeCodeHealth', () => {
+  it('produces a quality score and grade', () => {
+    const ch = analyzeCodeHealth([
+      file('src/a.js', 'function f() { return 1; }\n'.repeat(10)),
+      file('src/a.test.js', 'test("x", () => {});'),
+      file('.eslintrc.json', '{}'),
+      file('.github/workflows/ci.yml', 'on: push'),
+    ]);
+    expect(ch.quality.score).toBeGreaterThan(0);
+    expect(['A', 'B', 'C', 'D', 'F']).toContain(ch.quality.grade);
+    expect(ch.quality.metrics.hasTests).toBe(true);
+    expect(ch.quality.metrics.hasLinter).toBe(true);
+    expect(ch.quality.metrics.hasCI).toBe(true);
+  });
+
+  it('penalizes a repo with no tests/linter/CI', () => {
+    const withHygiene = analyzeCodeHealth([
+      file('a.js', 'const x = 1;'),
+      file('a.test.js', 'test()'),
+      file('.eslintrc', '{}'),
+      file('.github/workflows/ci.yml', 'on: push'),
+    ]);
+    const without = analyzeCodeHealth([file('a.js', 'const x = 1;')]);
+    expect(without.quality.score).toBeLessThan(withHygiene.quality.score);
+    expect(without.quality.metrics.hasTests).toBe(false);
+  });
+
+  it('flags a large file as a quality smell', () => {
+    const ch = analyzeCodeHealth([file('big.js', 'const x = 1;\n'.repeat(500))]);
+    expect(ch.quality.smells.some(s => /large file/i.test(s.type))).toBe(true);
+  });
+
+  it('detects efficiency anti-patterns (await in loop) but gives no score', () => {
+    const ch = analyzeCodeHealth([
+      file('a.js', 'for (const u of users) {\n  await fetchData(u);\n}'),
+    ]);
+    expect(ch.efficiency.smells.some(s => /await inside loop/i.test(s.type))).toBe(true);
+    expect(ch.efficiency).not.toHaveProperty('score');
+  });
+
+  it('marks accessibility N/A when there is no markup', () => {
+    const ch = analyzeCodeHealth([file('server.js', 'const x = 1;')]);
+    expect(ch.accessibility.applicable).toBe(false);
+    expect(ch.accessibility.score).toBeNull();
+  });
+
+  it('flags an image without alt and scores accessibility', () => {
+    const ch = analyzeCodeHealth([file('index.html', '<html><body><img src="x.png"></body></html>')]);
+    expect(ch.accessibility.applicable).toBe(true);
+    expect(ch.accessibility.findings.some(f => /missing alt/i.test(f.type))).toBe(true);
+    expect(typeof ch.accessibility.score).toBe('number');
+  });
+
+  it('flags missing lang attribute on html', () => {
+    const ch = analyzeCodeHealth([file('page.html', '<html><head></head><body><img src="a" alt="a"></body></html>')]);
+    expect(ch.accessibility.findings.some(f => /lang/i.test(f.type))).toBe(true);
+  });
+});

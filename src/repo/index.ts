@@ -4,6 +4,7 @@ import { scanSecrets } from './secretScanner.js';
 import { scanDependencies } from './depScanner.js';
 import { scanWorkflows } from './workflowScanner.js';
 import { checkHygiene, scanCodePatterns } from './hygiene.js';
+import { analyzeCodeHealth } from './codeHealth.js';
 import type { RepoAnalysisResult, Severity } from './types.js';
 
 export interface RepoAnalysisOptions {
@@ -51,6 +52,7 @@ export async function analyzeRepo(
   const workflows = scanWorkflows(fetched.files);
   const hygiene = checkHygiene(fetched.files);
   const codePatterns = scanCodePatterns(fetched.files);
+  const codeHealth = analyzeCodeHealth(fetched.files);
 
   // Aggregate severity counts across every finding type.
   const summary = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
@@ -86,6 +88,7 @@ export async function analyzeRepo(
     hygiene,
     workflows,
     codePatterns,
+    codeHealth,
     summary,
     warnings,
   };

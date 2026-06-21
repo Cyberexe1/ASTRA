@@ -62,6 +62,50 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
+// ─── IPC: API key management (encrypted via safeStorage) ─────────────────────
+// IMPORTANT: constants must be declared BEFORE the handlers that reference them.
+const KEY_FILE = join(app.getPath('userData'), 'gemini-key.enc');
+const GITHUB_TOKEN_FILE = join(app.getPath('userData'), 'github-token.enc');
+const HISTORY_FILE = join(app.getPath('userData'), 'scan-history.json');
+
+// ─── IPC: scan history persistence ────────────────────────────────────────────
+interface HistoryEntry {
+  id: string;
+  type: 'website' | 'repo';
+  url: string;
+  timestamp: string;
+  summary: Record<string, unknown>;
+}
+
+async function loadHistory(): Promise<HistoryEntry[]> {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const raw = await readFile(HISTORY_FILE, 'utf8');
+    return JSON.parse(raw) as HistoryEntry[];
+  } catch { return []; }
+}
+
+async function saveHistory(entry: HistoryEntry): Promise<void> {
+  const { writeFile } = await import('node:fs/promises');
+  const history = await loadHistory();
+  // Keep newest first, cap at 50 entries
+  const updated = [entry, ...history.filter(h => h.id !== entry.id)].slice(0, 50);
+  await writeFile(HISTORY_FILE, JSON.stringify(updated, null, 2), 'utf8');
+}
+
+ipcMain.handle('get-history', async () => loadHistory());
+
+ipcMain.handle('delete-history-entry', async (_event, id: string) => {
+  const { writeFile } = await import('node:fs/promises');
+  const history = await loadHistory();
+  await writeFile(HISTORY_FILE, JSON.stringify(history.filter(h => h.id !== id), null, 2), 'utf8');
+});
+
+ipcMain.handle('clear-history', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(HISTORY_FILE, '[]', 'utf8');
+});
+
 // ─── IPC: analyze URL ─────────────────────────────────────────────────────────
 ipcMain.handle('analyze', async (_event, rawUrl: string, options: { activeScan?: boolean } = {}) => {
   const validation = normalizeAndValidate(rawUrl);
@@ -110,7 +154,7 @@ ipcMain.handle('analyze', async (_event, rawUrl: string, options: { activeScan?:
     ? await runVulnScan(api).catch(() => emptyVuln)
     : { ...emptyVuln, skipped: true };
 
-  return {
+  const result = {
     url: validation.url,
     captureTimestamp: capture.captureTimestamp,
     totalDurationMs: capture.totalDurationMs,
@@ -126,11 +170,28 @@ ipcMain.handle('analyze', async (_event, rawUrl: string, options: { activeScan?:
     fingerprint: fingerprintValue,
     dns: dnsReport.status === 'fulfilled' ? dnsReport.value : null,
     csp: cspReport.status === 'fulfilled' ? cspReport.value : null,
-    securityHeaders,   // X-Content-Type-Options, Referrer-Policy, Permissions-Policy, etc.
-    cookieIssues,      // HttpOnly, Secure, SameSite flag analysis
-    mixedContent,      // HTTP resources loaded on an HTTPS page
+    securityHeaders,
+    cookieIssues,
+    mixedContent,
     vuln: vulnResult,
   };
+
+  // Persist to history
+  await saveHistory({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'website',
+    url: validation.url,
+    timestamp: capture.captureTimestamp,
+    summary: {
+      totalRequests: data.aggregate.totalRequests,
+      totalBytes: data.aggregate.totalBytes,
+      errors: data.errors.length,
+      tlsGrade: result.tls && !('error' in result.tls) ? result.tls.grade : null,
+      cspGrade: result.csp?.grade ?? null,
+    },
+  }).catch(() => {});
+
+  return result;
 });
 
 // ─── IPC: open external link ──────────────────────────────────────────────────
@@ -140,7 +201,6 @@ ipcMain.handle('open-external', (_event, url: string) => {
 
 // ─── IPC: analyze GitHub repository ───────────────────────────────────────────
 ipcMain.handle('analyze-repo', async (_event, rawUrl: string, options: { advanced?: boolean } = {}) => {
-  // Reuse the encrypted Groq-key storage path's directory for an optional GitHub token.
   let token: string | undefined;
   try {
     const { readFile } = await import('node:fs/promises');
@@ -151,7 +211,26 @@ ipcMain.handle('analyze-repo', async (_event, rawUrl: string, options: { advance
   } catch {
     token = process.env.GITHUB_TOKEN ?? undefined;
   }
-  return analyzeRepo(rawUrl, { advanced: options.advanced === true, token });
+  const result = await analyzeRepo(rawUrl, { advanced: options.advanced === true, token });
+
+  // Persist to history
+  await saveHistory({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'repo',
+    url: rawUrl.trim(),
+    timestamp: new Date().toISOString(),
+    summary: {
+      fileCount: result.fileCount,
+      mode: result.mode,
+      secrets: result.secrets.length,
+      dependencies: result.dependencies.length,
+      total: result.summary.total,
+      critical: result.summary.critical,
+      high: result.summary.high,
+    },
+  }).catch(() => {});
+
+  return result;
 });
 
 ipcMain.handle('save-github-token', async (_event, value: string) => {
@@ -163,10 +242,21 @@ ipcMain.handle('save-github-token', async (_event, value: string) => {
   }
 });
 
-// ─── IPC: API key management (encrypted via safeStorage) ─────────────────────
-const KEY_FILE = join(app.getPath('userData'), 'gemini-key.enc');
-const GITHUB_TOKEN_FILE = join(app.getPath('userData'), 'github-token.enc');
+ipcMain.handle('load-github-token', async () => {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const data = await readFile(GITHUB_TOKEN_FILE);
+    const val = safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(data)
+      : data.toString('utf8');
+    // Return only a masked preview, never the raw token to the renderer
+    return val ? '•'.repeat(20) : null;
+  } catch {
+    return process.env.GITHUB_TOKEN ? '•'.repeat(20) : null;
+  }
+});
 
+// ─── IPC: API key management ──────────────────────────────────────────────────
 ipcMain.handle('save-api-key', async (_event, apiKey: string) => {
   const { writeFile } = await import('node:fs/promises');
   if (!safeStorage.isEncryptionAvailable()) {
@@ -184,7 +274,6 @@ ipcMain.handle('load-api-key', async () => {
     if (!safeStorage.isEncryptionAvailable()) return data.toString('utf8');
     return safeStorage.decryptString(data);
   } catch {
-    // Fall back to .env GROQ_API_KEY if no saved key
     return process.env.GROQ_API_KEY ?? null;
   }
 });

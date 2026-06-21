@@ -2,8 +2,6 @@
 window.lastData = null;
 
 // HTML-escape untrusted scan data before embedding it in the PDF template.
-// The PDF is rendered in a BrowserWindow with JavaScript enabled, so unescaped
-// content from a scanned site would otherwise execute as script.
 function escHtml(value) {
   if (value === null || value === undefined) return '';
   return String(value)
@@ -12,6 +10,117 @@ function escHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// Store last-scanned URL so re-scan and history work
+window.lastScanUrl = null;
+window.lastScanOptions = null;
+
+function reScan() {
+  if (!window.lastScanUrl) return;
+  document.getElementById('urlInput').value = window.lastScanUrl;
+  if (window.lastScanOptions?.activeScan) {
+    document.getElementById('activeScanToggle').checked = true;
+  }
+  analyze();
+}
+
+// ── Actionable error messages ──────────────────────────────────────────────────
+function friendlyError(err) {
+  const msg = (err && err.message) ? err.message : String(err);
+  if (/net::ERR_|ENOTFOUND|getaddrinfo|ETIMEDOUT|ECONNREFUSED/i.test(msg)) {
+    return '✗ Could not reach the URL — check the address and your internet connection.';
+  }
+  if (/TimeoutError|timeout/i.test(msg)) {
+    return '✗ Page took too long to load. Try again or check if the site is accessible.';
+  }
+  if (/Invalid URL|Unsupported scheme/i.test(msg)) {
+    return '✗ ' + msg + ' — enter a full URL starting with https://';
+  }
+  return '✗ ' + msg;
+}
+
+function friendlyRepoError(err) {
+  const msg = (err && err.message) ? err.message : String(err);
+  if (/not found|404/i.test(msg)) {
+    return '✗ Repository not found. Check the URL — if it\'s a private repo, add a GitHub token in Settings.';
+  }
+  if (/rate limit|403/i.test(msg)) {
+    return '✗ GitHub API rate limit hit. Add a GitHub token in Settings to get 5,000 requests/hour.';
+  }
+  if (/git.*not.*found|git.*installed|ENOENT.*git/i.test(msg)) {
+    return '✗ Advanced mode requires git to be installed. Install git and try again, or switch to Basic mode.';
+  }
+  if (/timeout/i.test(msg)) {
+    return '✗ Timed out fetching the repository. The repo may be very large — try Basic mode.';
+  }
+  return '✗ ' + msg;
+}
+
+// ── Scan history ───────────────────────────────────────────────────────────────
+async function refreshHistoryPanel() {
+  const list = document.getElementById('historyList');
+  if (!list) return;
+  let history = [];
+  try { history = await window.electronAPI.getHistory(); } catch { return; }
+
+  if (!history.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px">No scans yet</div>';
+    return;
+  }
+
+  list.innerHTML = history.slice(0, 20).map(h => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:0.8rem">${h.type === 'repo' ? '📦' : '🌐'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(h.url)}">${escHtml(h.url)}</div>
+        <div style="font-size:0.7rem;color:var(--muted)">${new Date(h.timestamp).toLocaleString()}</div>
+      </div>
+      <button onclick="rescanFromHistory('${escHtml(h.type)}','${escHtml(h.url)}')"
+              style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;cursor:pointer;white-space:nowrap">
+        Re-scan
+      </button>
+      <button onclick="deleteHistoryEntry('${escHtml(h.id)}')"
+              style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:2px 4px">✕</button>
+    </div>`).join('');
+}
+
+function rescanFromHistory(type, url) {
+  toggleSettings();
+  if (type === 'repo') {
+    showRepoMode();
+    document.getElementById('repoInput').value = url;
+    setTimeout(() => analyzeRepo(), 100);
+  } else {
+    showWebsiteMode();
+    document.getElementById('urlInput').value = url;
+    setTimeout(() => analyze(), 100);
+  }
+}
+
+async function deleteHistoryEntry(id) {
+  try { await window.electronAPI.deleteHistoryEntry(id); } catch { /* ignore */ }
+  await refreshHistoryPanel();
+}
+
+async function clearAllHistory() {
+  try { await window.electronAPI.clearHistory(); } catch { /* ignore */ }
+  await refreshHistoryPanel();
+}
+
+async function saveGithubToken() {
+  const input = document.getElementById('githubTokenInput');
+  const status = document.getElementById('githubTokenStatus');
+  const val = input.value.trim();
+  if (!val || val.startsWith('•')) return;
+  status.innerHTML = '<span style="color:var(--muted)">Saving…</span>';
+  try {
+    await window.electronAPI.saveGithubToken(val);
+    input.value = '•'.repeat(20);
+    status.innerHTML = '<span style="color:var(--green)">✓ GitHub token saved</span>';
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red)">✗ Failed to save token</span>';
+  }
 }
 
 function render(data) {
@@ -269,18 +378,24 @@ async function analyze() {
     const data =
       await window.electronAPI.analyze(url, { activeScan });
 
+    // Persist URL for re-scan and history
+    window.lastScanUrl = url;
+    window.lastScanOptions = { activeScan };
+
     status.textContent =
 
       `Captured ${data.aggregate.totalRequests} requests in ${data.totalDurationMs.toFixed(0)}ms`;
 
     render(data);
 
+    // Refresh history panel if settings are open
+    refreshHistoryPanel().catch(() => {});
+
   } catch(err) {
 
     status.className = 'error';
 
-    status.textContent =
-      '✗ ' + (err.message || err);
+    status.textContent = friendlyError(err);
 
   } finally {
 
@@ -577,9 +692,9 @@ async function analyzeRepo() {
       ' — ' + data.summary.total + ' findings</span>';
     results.innerHTML = repoView(data);
     results.style.display = 'block';
+    refreshHistoryPanel().catch(() => {});
   } catch (err) {
-    status.innerHTML = '<span style="color:var(--red)">✗ ' +
-      escHtml(err.message || String(err)) + '</span>';
+    status.innerHTML = '<span style="color:var(--red)">' + escHtml(friendlyRepoError(err)) + '</span>';
   } finally {
     btn.disabled = false;
   }

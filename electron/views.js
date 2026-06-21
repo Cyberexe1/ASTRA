@@ -620,5 +620,94 @@ function repoView(data) {
         </table></div></div>`
     : '';
 
-  return header + warnings + summaryCards + secretsSection + depSection + wfSection + hygieneSection + codeSection;
+  const healthSection = repoCodeHealthView(data.codeHealth);
+
+  return header + warnings + summaryCards + healthSection + secretsSection + depSection + wfSection + hygieneSection + codeSection;
+}
+
+// ── Code Health (quality / efficiency / accessibility) — shown in both modes ──
+function repoCodeHealthView(ch) {
+  if (!ch) return '';
+  const gradeColor = (g) => ({ A: 'var(--green)', B: 'var(--green)', C: 'var(--yellow)', D: 'var(--yellow)', F: 'var(--red)' }[g] || 'var(--muted)');
+  const sevColor = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--muted)' };
+
+  const q = ch.quality;
+  const a = ch.accessibility;
+
+  const scoreCard = (label, score, grade, sub) => `
+    <div class="sec-card" style="text-align:center;min-width:150px">
+      <div class="sec-title">${esc(label)}</div>
+      <div style="font-size:2.4rem;font-weight:900;line-height:1.1;color:${grade ? gradeColor(grade) : 'var(--muted)'}">${score === null ? 'N/A' : esc(score)}${score !== null ? '<span style="font-size:1rem;color:var(--muted)">/100</span>' : ''}</div>
+      <div style="font-size:0.8rem;color:var(--muted);margin-top:4px">${grade ? 'Grade ' + esc(grade) : ''} ${sub ? '· ' + esc(sub) : ''}</div>
+    </div>`;
+
+  // Quality metrics chips
+  const m = q.metrics;
+  const chip = (ok, label) =>
+    `<span class="pill" style="background:${ok ? 'var(--green)' : 'var(--red)'}22;color:${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '✓' : '✗'} ${esc(label)}</span>`;
+  const metricsRow = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0">
+    ${chip(m.hasTests, 'Tests')} ${chip(m.hasLinter, 'Linter')} ${chip(m.hasCI, 'CI')} ${chip(m.hasTypeChecking, 'Type checking')}
+    <span class="pill pill-type">${m.filesAnalyzed} files</span>
+    <span class="pill pill-type">avg ${m.avgFileLines} lines</span>
+    <span class="pill pill-type">${m.largeFiles} large files</span>
+    <span class="pill pill-type">${m.todoCount} TODOs</span>
+    <span class="pill pill-type">${Math.round(m.commentRatio * 100)}% comments</span>
+  </div>`;
+
+  const qualitySmells = q.smells.length
+    ? `<div class="tbl-wrap"><table>
+        <thead><tr><th>Type</th><th>File</th><th>Detail</th></tr></thead>
+        <tbody>${q.smells.map(s => `<tr>
+          <td style="font-weight:600">${esc(s.type)}</td>
+          <td class="url-cell" title="${esc(s.file)}">${trunc(s.file, 44)}</td>
+          <td style="font-size:0.78rem;color:var(--muted)">${esc(s.detail)}</td>
+        </tr>`).join('')}</tbody></table></div>`
+    : '<p style="color:var(--green);font-size:0.85rem">✓ No notable quality smells</p>';
+
+  const effSmells = ch.efficiency.smells.length
+    ? `<div class="tbl-wrap"><table>
+        <thead><tr><th>Type</th><th>Location</th><th>Snippet</th></tr></thead>
+        <tbody>${ch.efficiency.smells.map(s => `<tr>
+          <td style="font-weight:600;color:var(--yellow)">${esc(s.type)}</td>
+          <td class="url-cell" title="${esc(s.file)}">${trunc(s.file, 40)}:${s.line}</td>
+          <td style="font-family:monospace;font-size:0.7rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.snippet)}">${esc(s.snippet)}</td>
+        </tr>`).join('')}</tbody></table></div>
+        <p style="color:var(--muted);font-size:0.74rem;margin-top:6px">Static anti-pattern heuristics, not a runtime measurement. Profile before optimizing.</p>`
+    : '<p style="color:var(--green);font-size:0.85rem">✓ No obvious efficiency anti-patterns detected</p>';
+
+  const a11yBody = !a.applicable
+    ? '<p style="color:var(--muted);font-size:0.85rem">N/A — no front-end markup (HTML/JSX/Vue/Svelte) found to analyze.</p>'
+    : (a.findings.length
+        ? `<div class="tbl-wrap"><table>
+            <thead><tr><th>Issue</th><th>Location</th><th>Detail</th></tr></thead>
+            <tbody>${a.findings.map(f => `<tr>
+              <td style="font-weight:600">${esc(f.type)}</td>
+              <td class="url-cell" title="${esc(f.file)}">${trunc(f.file, 40)}:${f.line}</td>
+              <td style="font-size:0.78rem;color:var(--muted)">${esc(f.detail)}</td>
+            </tr>`).join('')}</tbody></table></div>
+            <p style="color:var(--muted);font-size:0.74rem;margin-top:6px">Static checks only — full WCAG compliance requires manual testing with assistive technology.</p>`
+        : '<p style="color:var(--green);font-size:0.85rem">✓ No static accessibility issues found in scanned markup</p>');
+
+  return `<div class="section">
+    <h3>Code Health</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      ${scoreCard('Code Quality', q.score, q.grade, '')}
+      ${scoreCard('Accessibility', a.score, a.grade, a.applicable ? a.htmlFilesScanned + ' files' : 'no markup')}
+      <div class="sec-card" style="text-align:center;min-width:150px">
+        <div class="sec-title">Efficiency</div>
+        <div style="font-size:2.4rem;font-weight:900;line-height:1.1;color:${ch.efficiency.smells.length ? 'var(--yellow)' : 'var(--green)'}">${ch.efficiency.smells.length}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:4px">anti-pattern smells</div>
+      </div>
+    </div>
+
+    <div style="font-size:0.82rem;font-weight:700;color:var(--accent2);margin:14px 0 6px">Code Quality</div>
+    ${metricsRow}
+    ${qualitySmells}
+
+    <div style="font-size:0.82rem;font-weight:700;color:var(--accent2);margin:18px 0 6px">Efficiency Smells</div>
+    ${effSmells}
+
+    <div style="font-size:0.82rem;font-weight:700;color:var(--accent2);margin:18px 0 6px">Accessibility</div>
+    ${a11yBody}
+  </div>`;
 }

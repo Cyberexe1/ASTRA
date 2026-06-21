@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   analyze: (url: string, options?: { activeScan?: boolean }) => ipcRenderer.invoke('analyze', url, options),
   analyzeRepo: (url: string, options?: { advanced?: boolean }) => ipcRenderer.invoke('analyze-repo', url, options),
   saveGithubToken: (token: string) => ipcRenderer.invoke('save-github-token', token),
+  loadGithubToken: () => ipcRenderer.invoke('load-github-token'),
+  getHistory: () => ipcRenderer.invoke('get-history'),
+  deleteHistoryEntry: (id: string) => ipcRenderer.invoke('delete-history-entry', id),
+  clearHistory: () => ipcRenderer.invoke('clear-history'),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   exportPdf: (html: string) => ipcRenderer.invoke('export-pdf', html),
 

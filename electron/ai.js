@@ -17,6 +17,19 @@ async function initSettings() {
     document.getElementById('keyStatus').innerHTML =
       '<span style="color:var(--green)">✓ API key loaded</span>';
   }
+
+  // Load GitHub token status (masked)
+  try {
+    const masked = await window.electronAPI.loadGithubToken();
+    if (masked) {
+      document.getElementById('githubTokenInput').value = masked;
+      document.getElementById('githubTokenStatus').innerHTML =
+        '<span style="color:var(--green)">✓ GitHub token loaded</span>';
+    }
+  } catch { /* no token saved */ }
+
+  // Load history into settings panel
+  await refreshHistoryPanel();
 }
 
 function toggleSettings() {
@@ -76,46 +89,28 @@ function renderAiTab() {
       ${!window.geminiApiKey ? `
         <div style="
           background:var(--surface2);
-          border:1px solid var(--border);
-          border-radius:10px;
-          padding:20px;
+          border:1px solid var(--accent);
+          border-radius:12px;
+          padding:24px;
           margin-bottom:16px;
-          text-align:center
         ">
-
-          <div style="
-            font-size:1rem;
-            font-weight:700;
-            margin-bottom:6px
-          ">
-            Gemini API Key Required
+          <div style="font-size:1rem;font-weight:700;margin-bottom:8px">🔑 Set up AI Analysis</div>
+          <div style="color:var(--muted);font-size:0.85rem;margin-bottom:16px;line-height:1.6">
+            ASTRA uses <strong style="color:var(--text)">Groq</strong> (free tier, no credit card required)
+            to generate security reports and answer questions about scan results.
           </div>
-
-          <div style="
-            color:var(--muted);
-            font-size:0.85rem;
-            margin-bottom:12px
-          ">
-            Add your Gemini API key
-            in Settings to enable AI analysis.
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;font-size:0.82rem;line-height:1.8">
+            <div style="font-weight:700;color:var(--text);margin-bottom:6px">3 steps to get started:</div>
+            <div>1. Go to <a href="#" onclick="window.electronAPI.openExternal('https://console.groq.com/keys');return false" style="color:var(--accent)">console.groq.com/keys</a></div>
+            <div>2. Click <strong style="color:var(--text)">Create API Key</strong> — give it any name</div>
+            <div>3. Copy the key, paste it in Settings, click Save</div>
           </div>
-
           <button
             onclick="toggleSettings()"
-            style="
-              background:var(--accent);
-              color:#fff;
-              border:none;
-              border-radius:8px;
-              padding:9px 20px;
-              font-size:0.85rem;
-              font-weight:600;
-              cursor:pointer
-            "
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:0.88rem;font-weight:600;cursor:pointer;width:100%"
           >
-            Open Settings
+            Open Settings to add Groq API key →
           </button>
-
         </div>
       ` : ''}
 
