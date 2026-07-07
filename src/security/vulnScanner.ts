@@ -84,7 +84,6 @@ function detectXssContext(body: string, payload: string): string | null {
   if (!body.includes(payload)) return null; // not reflected at all
 
   const payloadIndex = body.indexOf(payload);
-  const surrounding = body.slice(Math.max(0, payloadIndex - 100), payloadIndex + payload.length + 100);
 
   // Check if the reflection is inside an HTML comment — not exploitable
   if (/<!--[\s\S]*$/.test(body.slice(0, payloadIndex)) &&

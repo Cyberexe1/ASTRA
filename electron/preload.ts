@@ -16,21 +16,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadApiKey: () => ipcRenderer.invoke('load-api-key'),
   validateApiKey: (key: string) => ipcRenderer.invoke('validate-api-key', key),
 
-  // Gemini streaming
-  geminiAnalyze: (scanData: unknown, apiKey: string) =>
-    ipcRenderer.invoke('gemini-analyze', scanData, apiKey),
-  geminiChat: (messages: unknown[], apiKey: string) =>
-    ipcRenderer.invoke('gemini-chat', messages, apiKey),
+  // Groq streaming
+  groqAnalyze: (scanData: unknown, apiKey: string) =>
+    ipcRenderer.invoke('groq-analyze', scanData, apiKey),
+  groqChat: (messages: unknown[], apiKey: string) =>
+    ipcRenderer.invoke('groq-chat', messages, apiKey),
 
   // Streaming event listeners
-  onGeminiChunk: (cb: (chunk: { text: string; done: boolean }) => void) => {
-    ipcRenderer.on('gemini-chunk', (_e, chunk) => cb(chunk));
+  onGroqChunk: (cb: (chunk: { text: string; done: boolean }) => void) => {
+    ipcRenderer.on('groq-chunk', (_e, chunk) => cb(chunk));
   },
-  onGeminiError: (cb: (msg: string) => void) => {
-    ipcRenderer.on('gemini-error', (_e, msg) => cb(msg));
+  onGroqError: (cb: (msg: string) => void) => {
+    ipcRenderer.on('groq-error', (_e, msg) => cb(msg));
   },
-  removeGeminiListeners: () => {
-    ipcRenderer.removeAllListeners('gemini-chunk');
-    ipcRenderer.removeAllListeners('gemini-error');
+  removeGroqListeners: () => {
+    ipcRenderer.removeAllListeners('groq-chunk');
+    ipcRenderer.removeAllListeners('groq-error');
   },
 });

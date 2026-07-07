@@ -20,7 +20,7 @@ const SECRET_PATTERNS: SecretPattern[] = [
   { type: 'Twilio API Key',           severity: 'high',     pattern: /\bSK[0-9a-fA-F]{32}\b/ },
   { type: 'SendGrid API Key',         severity: 'high',     pattern: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/ },
   { type: 'Private Key',              severity: 'critical', pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/ },
-  { type: 'Generic API Key Assignment', severity: 'medium', pattern: /\b(?:api[_-]?key|apikey|secret|token|passwd|password)\b\s*[=:]\s*["'][A-Za-z0-9_\-]{16,}["']/i },
+  { type: 'Generic API Key Assignment', severity: 'medium', pattern: /\b(?:api[_-]?key|apikey|secret|token|passwd|password)\b\s*[=:]\s*["'][A-Za-z0-9_-]{16,}["']/i },
   { type: 'JWT',                      severity: 'medium',   pattern: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
   { type: 'Connection String w/ Password', severity: 'high', pattern: /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|amqp):\/\/[^:@\s]+:[^@\s]+@/i },
   { type: 'Database URL Credential',  severity: 'high',     pattern: /\b(?:DATABASE_URL|DB_PASSWORD|DB_PASS)\b\s*[=:]\s*["']?[^\s"']{6,}/i },

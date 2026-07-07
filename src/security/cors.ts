@@ -45,8 +45,9 @@ export function analyzeCors(requests: NetworkRequest[]): CorsReport {
 
     const acao = h['access-control-allow-origin'];
     const acac = h['access-control-allow-credentials'];
-    const acam = h['access-control-allow-methods'];
-    const acah = h['access-control-allow-headers'];
+    // NOTE: Access-Control-Allow-Methods and Access-Control-Allow-Headers are
+    // intentionally NOT inspected — flagging DELETE/PUT/PATCH or Authorization
+    // produced false positives on normal REST/SPA behavior (see note below).
 
     if (!acao) continue;
 

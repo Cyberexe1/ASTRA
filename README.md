@@ -70,7 +70,7 @@ Page-load completion is detected with a **two-stage wait strategy**. It first wa
 The captured requests are fanned out to the security modules. Most are pure functions over the captured data and run synchronously; the ones that reach back out to the network (TLS handshake, DNS lookups, the active vulnerability scanner) run as promises. In the Electron path they're orchestrated with `Promise.allSettled` so one slow or failing module never sinks the whole scan — a failed TLS probe just returns an error placeholder while everything else proceeds.
 
 ### 5. AI analysis (optional, streamed)
-If an API key is configured, the consolidated result is summarized into a compact prompt (`src/ai/gemini.ts`) and streamed to the model. Tokens arrive incrementally and render live in the UI. A follow-up chat keeps the scan context so you can interrogate the findings.
+If an API key is configured, the consolidated result is summarized into a compact prompt (`src/ai/groqClient.ts`) and streamed to the model. Tokens arrive incrementally and render live in the UI. A follow-up chat keeps the scan context so you can interrogate the findings.
 
 ### 6. Export
 The finished scan can be exported three ways: a **PDF** (rendered by a hidden Electron window printing to PDF), a **HAR 1.2** file (importable into Chrome DevTools or webpagetest.org), and a **Markdown** report.
@@ -99,7 +99,7 @@ After capture, the analysis modules run in parallel. Each owns one problem domai
 ### AI Security Analysis
 The consolidated scan is summarized and streamed to **Groq (`llama-3.3-70b-versatile`)** over an OpenAI-compatible streaming endpoint. It produces an executive summary with an overall risk level, critical findings with concrete remediation steps, a third-party risk assessment, and a prioritized remediation plan tailored to the detected stack. A follow-up chat retains the scan context.
 
-> The integration file is named `src/ai/gemini.ts` for legacy reasons — it targets the Groq API, not Google Gemini.
+> The integration lives in `src/ai/groqClient.ts` and targets the Groq API (OpenAI-compatible endpoint).
 
 ---
 
@@ -183,7 +183,7 @@ ASTRA is built around a **shared analysis core** with three independent front-en
                           └───────┬───────────────┬────────┘
                                   ▼               ▼
                     ┌─────────────────┐   ┌──────────────────────┐
-                    │ ai/gemini.ts    │   │ exports: PDF / HAR /  │
+                    │ ai/groqClient.ts│   │ exports: PDF / HAR /  │
                     │ (Groq, streamed)│   │ Markdown              │
                     └─────────────────┘   └──────────────────────┘
 ```
@@ -303,7 +303,7 @@ src/
   url.ts              — URL normalization and validation
   types.ts            — Shared TypeScript interfaces (NetworkRequest, etc.)
   ai/
-    gemini.ts         — Groq (llama-3.3-70b-versatile) streaming client
+    groqClient.ts     — Groq (llama-3.3-70b-versatile) streaming client
   security/
     tls.ts            — TLS/SSL inspection + HSTS + HTTP→HTTPS redirect check
     cors.ts           — CORS misconfiguration detection (low false-positive)

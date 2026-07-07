@@ -1,15 +1,15 @@
 
-window.geminiApiKey = null;
+window.groqApiKey = null;
 
 let aiConversation = [];
 let aiStreaming = false;
 
 async function initSettings() {
 
-  window.geminiApiKey =
+  window.groqApiKey =
     await window.electronAPI.loadApiKey();
 
-  if (window.geminiApiKey) {
+  if (window.groqApiKey) {
 
     document.getElementById('apiKeyInput').value =
       '•'.repeat(20);
@@ -73,7 +73,7 @@ async function saveApiKey() {
 
   await window.electronAPI.saveApiKey(key);
 
-  window.geminiApiKey = key;
+  window.groqApiKey = key;
 
   input.value = '•'.repeat(20);
 
@@ -86,7 +86,7 @@ function renderAiTab() {
   document.getElementById('tab-ai').innerHTML = `
     <div style="max-width:860px">
 
-      ${!window.geminiApiKey ? `
+      ${!window.groqApiKey ? `
         <div style="
           background:var(--surface2);
           border:1px solid var(--accent);
@@ -152,13 +152,13 @@ function renderAiTab() {
               sendAiMessage();
             }
           "
-          ${!window.geminiApiKey ? 'disabled' : ''}
+          ${!window.groqApiKey ? 'disabled' : ''}
         />
 
         <button
           id="aiSendBtn"
           onclick="sendAiMessage()"
-          ${!window.geminiApiKey ? 'disabled' : ''}
+          ${!window.groqApiKey ? 'disabled' : ''}
           style="
             background:var(--accent);
             color:#fff;
@@ -346,7 +346,7 @@ function escapeHtml(s) {
 async function runAiAnalysis() {
 
   if (
-    !window.geminiApiKey ||
+    !window.groqApiKey ||
     !window.lastData
   ) {
     return;
@@ -367,9 +367,9 @@ async function runAiAnalysis() {
 
   let fullText = '';
 
-  window.electronAPI.removeGeminiListeners();
+  window.electronAPI.removeGroqListeners();
 
-  window.electronAPI.onGeminiChunk(chunk => {
+  window.electronAPI.onGroqChunk(chunk => {
 
     if (chunk.done) {
 
@@ -421,7 +421,7 @@ async function runAiAnalysis() {
     }
   });
 
-  window.electronAPI.onGeminiError(msg => {
+  window.electronAPI.onGroqError(msg => {
 
     aiStreaming = false;
 
@@ -432,16 +432,16 @@ async function runAiAnalysis() {
     );
   });
 
-  await window.electronAPI.geminiAnalyze(
+  await window.electronAPI.groqAnalyze(
     window.lastData,
-    window.geminiApiKey
+    window.groqApiKey
   );
 }
 
 async function sendAiMessage() {
 
   if (
-    !window.geminiApiKey ||
+    !window.groqApiKey ||
     aiStreaming
   ) {
     return;
@@ -513,9 +513,9 @@ ${text}
 
   let fullText = '';
 
-  window.electronAPI.removeGeminiListeners();
+  window.electronAPI.removeGroqListeners();
 
-  window.electronAPI.onGeminiChunk(chunk => {
+  window.electronAPI.onGroqChunk(chunk => {
 
     if (chunk.done) {
 
@@ -556,7 +556,7 @@ ${text}
     }
   });
 
-  window.electronAPI.onGeminiError(msg => {
+  window.electronAPI.onGroqError(msg => {
 
     aiStreaming = false;
 
@@ -567,9 +567,9 @@ ${text}
     );
   });
 
-  await window.electronAPI.geminiChat(
+  await window.electronAPI.groqChat(
     aiConversation,
-    window.geminiApiKey
+    window.groqApiKey
   );
 }
 

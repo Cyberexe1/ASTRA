@@ -291,7 +291,7 @@ function render(data) {
   document.getElementById('dashboard').style.display =
     'block';
 
-  if (window.geminiApiKey) {
+  if (window.groqApiKey) {
 
     setTimeout(() => {
 

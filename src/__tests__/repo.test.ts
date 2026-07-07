@@ -55,8 +55,7 @@ describe('parseGithubUrl', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('scanSecrets', () => {
   it('detects an AWS access key id', () => {
-    const findings = scanSecrets([file('config.js', 'const key = "AKIAIOSFODNN7EXAMPLE";')]);
-    // AKIA...EXAMPLE contains "example" → placeholder filter. Use a non-placeholder one:
+    // "AKIA...EXAMPLE" contains "example" → filtered as a placeholder. Use a non-placeholder one:
     const real = scanSecrets([file('config.js', 'const k = "AKIA1234567890ABCDEF";')]);
     expect(real.some(f => f.type === 'AWS Access Key ID')).toBe(true);
   });

@@ -44,7 +44,7 @@ function httpsJson<T>(url: string, token?: string): Promise<T> {
 }
 
 function httpsText(url: string, token?: string): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const req = https.request(url, { headers, timeout: 15000 }, (res) => {

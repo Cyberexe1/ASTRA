@@ -137,8 +137,20 @@ export async function captureNetwork(options: CaptureOptions): Promise<CaptureRe
         if (pd) requestBody = pd.slice(0, MAX_BODY_SAMPLE_BYTES);
       } catch { /* no post data */ }
 
+      // IMPORTANT: Playwright's sync `headers()` strips cookie-related headers
+      // (Set-Cookie, Cookie). The async `allHeaders()` returns the complete set,
+      // which the cookie/auth analyzers depend on. Fall back to the sync headers
+      // if the async call fails for any reason.
+      let requestHeaders = req.headers();
+      let responseHeaders: Record<string, string> = entry.response?.headers() ?? {};
+      try {
+        requestHeaders = await req.allHeaders();
+        const resp = await req.response();
+        if (resp) responseHeaders = await resp.allHeaders();
+      } catch { /* keep the sync-header fallback */ }
+
       const mapped = mapRequest(req, entry.response, { startTime: entry.startTime, ttfbMs, durationMs });
-      finishedRequests.push({ ...mapped, sizeBytes, requestBody, responseBodySample });
+      finishedRequests.push({ ...mapped, requestHeaders, responseHeaders, sizeBytes, requestBody, responseBodySample });
     });
 
     page.on('requestfailed', (req) => {

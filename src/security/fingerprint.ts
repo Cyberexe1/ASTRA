@@ -83,12 +83,12 @@ const URL_SIGNATURES: Array<{
   { pattern: /[?&]ver=([\d.]+)/i,                  name: 'WordPress',           category: 'cms',       confidence: 'medium', versionGroup: 1 },
   { pattern: /\/sites\/default\/files\//i,          name: 'Drupal',              category: 'cms',       confidence: 'high' },
   { pattern: /\/Umbraco\//i,                        name: 'Umbraco',             category: 'cms',       confidence: 'high' },
-  { pattern: /react(-dom)?[\.\-]([\d]+)/i,          name: 'React',               category: 'library',   confidence: 'medium', versionGroup: 2 },
-  { pattern: /angular[\.\-]([\d]+)/i,               name: 'Angular',             category: 'framework', confidence: 'medium', versionGroup: 1 },
-  { pattern: /vue[\.\-]([\d]+)/i,                   name: 'Vue.js',              category: 'framework', confidence: 'medium', versionGroup: 1 },
-  { pattern: /jquery[\.\-]([\d.]+)/i,               name: 'jQuery',              category: 'library',   confidence: 'medium', versionGroup: 1 },
-  { pattern: /bootstrap[\.\-]([\d.]+)/i,            name: 'Bootstrap',           category: 'library',   confidence: 'medium', versionGroup: 1 },
-  { pattern: /next[\.\-]([\d]+)/i,                  name: 'Next.js',             category: 'framework', confidence: 'medium', versionGroup: 1 },
+  { pattern: /react(-dom)?[.-]([\d]+)/i,          name: 'React',               category: 'library',   confidence: 'medium', versionGroup: 2 },
+  { pattern: /angular[.-]([\d]+)/i,               name: 'Angular',             category: 'framework', confidence: 'medium', versionGroup: 1 },
+  { pattern: /vue[.-]([\d]+)/i,                   name: 'Vue.js',              category: 'framework', confidence: 'medium', versionGroup: 1 },
+  { pattern: /jquery[.-]([\d.]+)/i,               name: 'jQuery',              category: 'library',   confidence: 'medium', versionGroup: 1 },
+  { pattern: /bootstrap[.-]([\d.]+)/i,            name: 'Bootstrap',           category: 'library',   confidence: 'medium', versionGroup: 1 },
+  { pattern: /next[.-]([\d]+)/i,                  name: 'Next.js',             category: 'framework', confidence: 'medium', versionGroup: 1 },
   { pattern: /gtag\/js/i,                           name: 'Google Analytics',    category: 'analytics', confidence: 'high' },
   { pattern: /google-analytics\.com/i,              name: 'Google Analytics',    category: 'analytics', confidence: 'high' },
   { pattern: /googletagmanager\.com/i,              name: 'Google Tag Manager',  category: 'analytics', confidence: 'high' },
@@ -131,7 +131,7 @@ function categorizeThirdParty(domain: string): string {
 function detectCmsExposure(
   cms: string,
   requests: NetworkRequest[],
-  targetHost: string,
+  _targetHost: string,
 ): CmsExposureFinding[] {
   const findings: CmsExposureFinding[] = [];
   const urls = requests.map(r => r.url);

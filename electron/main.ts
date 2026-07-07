@@ -20,8 +20,8 @@ import { runVulnScan } from '../src/security/vulnScanner.js';
 import { findMixedContent } from '../src/security/mixedContent.js';
 import { correlateCves } from '../src/security/cve.js';
 import { analyzeRepo } from '../src/repo/index.js';
-import { streamGeminiAnalysis, streamGeminiChat, validateApiKey } from '../src/ai/gemini.js';
-import type { GeminiMessage } from '../src/ai/gemini.js';
+import { streamGroqAnalysis, streamGroqChat, validateApiKey } from '../src/ai/groqClient.js';
+import type { GroqChatMessage } from '../src/ai/groqClient.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -64,7 +64,7 @@ app.on('activate', () => {
 
 // ─── IPC: API key management (encrypted via safeStorage) ─────────────────────
 // IMPORTANT: constants must be declared BEFORE the handlers that reference them.
-const KEY_FILE = join(app.getPath('userData'), 'gemini-key.enc');
+const KEY_FILE = join(app.getPath('userData'), 'groq-key.enc');
 const GITHUB_TOKEN_FILE = join(app.getPath('userData'), 'github-token.enc');
 const HISTORY_FILE = join(app.getPath('userData'), 'scan-history.json');
 
@@ -282,24 +282,24 @@ ipcMain.handle('validate-api-key', async (_event, apiKey: string) => {
   return validateApiKey(apiKey);
 });
 
-// ─── IPC: Gemini streaming analysis ──────────────────────────────────────────
-ipcMain.handle('gemini-analyze', async (event, scanData: unknown, apiKey: string) => {
+// ─── IPC: Groq streaming analysis ────────────────────────────────────────────
+ipcMain.handle('groq-analyze', async (event, scanData: unknown, apiKey: string) => {
   try {
-    for await (const chunk of streamGeminiAnalysis(apiKey, scanData)) {
-      event.sender.send('gemini-chunk', chunk);
+    for await (const chunk of streamGroqAnalysis(apiKey, scanData)) {
+      event.sender.send('groq-chunk', chunk);
     }
   } catch (err) {
-    event.sender.send('gemini-error', (err as Error).message);
+    event.sender.send('groq-error', (err as Error).message);
   }
 });
 
-ipcMain.handle('gemini-chat', async (event, messages: GeminiMessage[], apiKey: string) => {
+ipcMain.handle('groq-chat', async (event, messages: GroqChatMessage[], apiKey: string) => {
   try {
-    for await (const chunk of streamGeminiChat(apiKey, messages)) {
-      event.sender.send('gemini-chunk', chunk);
+    for await (const chunk of streamGroqChat(apiKey, messages)) {
+      event.sender.send('groq-chunk', chunk);
     }
   } catch (err) {
-    event.sender.send('gemini-error', (err as Error).message);
+    event.sender.send('groq-error', (err as Error).message);
   }
 });
 

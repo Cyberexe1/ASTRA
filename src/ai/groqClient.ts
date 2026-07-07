@@ -6,7 +6,7 @@ const BASE_URL = 'api.groq.com';
 const API_PATH = '/openai/v1/chat/completions';
 
 // Message format — OpenAI-compatible (role: user/assistant)
-export interface GeminiMessage {
+export interface GroqChatMessage {
   role: 'user' | 'model';
   parts: Array<{ text: string }>;
 }
@@ -21,8 +21,8 @@ export interface StreamChunk {
   done: boolean;
 }
 
-// Convert Gemini-style messages to OpenAI/Groq format
-function toGroqMessages(messages: GeminiMessage[]): GroqMessage[] {
+// Convert internal message shape to OpenAI/Groq wire format
+function toGroqMessages(messages: GroqChatMessage[]): GroqMessage[] {
   return messages.map(m => ({
     role: m.role === 'model' ? 'assistant' : 'user',
     content: m.parts.map(p => p.text).join(''),
@@ -135,23 +135,23 @@ Anything unusual, surprising, or worth investigating further that doesn't fit th
 Be specific, technical, and actionable. Avoid generic advice. Reference the actual findings from the scan data.`;
 }
 
-export async function* streamGeminiAnalysis(
+export async function* streamGroqAnalysis(
   apiKey: string,
   scanData: unknown,
-  conversationHistory: GeminiMessage[] = []
+  conversationHistory: GroqChatMessage[] = []
 ): AsyncGenerator<StreamChunk> {
   const prompt = buildScanSummaryPrompt(scanData);
 
-  const messages: GeminiMessage[] = conversationHistory.length > 0
+  const messages: GroqChatMessage[] = conversationHistory.length > 0
     ? conversationHistory
     : [{ role: 'user', parts: [{ text: prompt }] }];
 
-  yield* streamGeminiChat(apiKey, messages);
+  yield* streamGroqChat(apiKey, messages);
 }
 
-export async function* streamGeminiChat(
+export async function* streamGroqChat(
   apiKey: string,
-  messages: GeminiMessage[]
+  messages: GroqChatMessage[]
 ): AsyncGenerator<StreamChunk> {
   const groqMessages = toGroqMessages(messages);
 

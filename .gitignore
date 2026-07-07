@@ -19,7 +19,7 @@ playwright-browsers/
 *.pem
 *.p12
 *.pfx
-gemini-key.enc
+groq-key.enc
 
 # ── Scan output files (generated at runtime, can be large/sensitive) ──────────
 report.md

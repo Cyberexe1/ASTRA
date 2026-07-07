@@ -49,7 +49,7 @@ interface SensitivePattern {
 const SENSITIVE_PATTERNS: SensitivePattern[] = [
   {
     type: 'API Key (generic)',
-    pattern: /(?:api[_-]?key|apikey)[=:\s]["']?([A-Za-z0-9_\-]{16,})/i,
+    pattern: /(?:api[_-]?key|apikey)[=:\s]["']?([A-Za-z0-9_-]{16,})/i,
     leakLocations: ['url', 'response-header', 'response-body'],
     reason: 'API key exposed outside of Authorization header — may be logged or cached',
   },
@@ -85,7 +85,7 @@ const SENSITIVE_PATTERNS: SensitivePattern[] = [
   },
   {
     type: 'Slack Token',
-    pattern: /xox[baprs]-[A-Za-z0-9\-]+/,
+    pattern: /xox[baprs]-[A-Za-z0-9-]+/,
     leakLocations: ['url', 'request-header', 'response-header', 'response-body'],
     reason: 'Slack API token exposed',
   },
@@ -103,7 +103,7 @@ const SENSITIVE_PATTERNS: SensitivePattern[] = [
   },
   {
     type: 'Email in URL',
-    pattern: /[?&](?:email|mail|user)=([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i,
+    pattern: /[?&](?:email|mail|user)=([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
     leakLocations: ['url'],
     reason: 'Email address in URL query param — logged by servers, leaks via Referer header',
   },
@@ -138,11 +138,6 @@ function scanForSensitive(
 function scanForJwts(text: string): JwtClaims[] {
   const matches = text.match(JWT_REGEX) ?? [];
   return matches.map(decodeJwt).filter((j): j is JwtClaims => j !== null);
-}
-
-/** Returns true if a JWT in a response body looks like an intended auth response (login/refresh) */
-function isExpectedJwtResponse(path: string, statusCode: number | null): boolean {
-  return /\/(login|signin|auth|token|refresh|oauth)/i.test(path) && statusCode === 200;
 }
 
 export function extractApiEndpoints(requests: NetworkRequest[]): ApiEndpoint[] {
